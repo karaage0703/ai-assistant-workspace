@@ -1,0 +1,9 @@
+[project]
+name = "calendar-skill"
+version = "0.1.0"
+description = "ICS calendar checker with manual event support"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx",
+    "icalendar",
+]

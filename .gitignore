@@ -1,0 +1,30 @@
+# 個人データ（セットアップ後に生成される）
+memory/*.md
+!memory/.gitkeep
+notes/*.md
+!notes/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# エディタ
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+
+# カレンダー（ICS URLは非公開情報）
+skills/calendar/calendar_urls.json
+skills/calendar/manual_events.json
+
+# ワークスペースRAG
+*.db
+*.db-journal

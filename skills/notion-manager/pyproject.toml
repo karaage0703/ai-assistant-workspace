@@ -1,0 +1,11 @@
+[project]
+name = "notion-manager"
+version = "0.1.0"
+description = "Notion API wrapper for search, read, create pages, and file upload"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+notion-manager = "notion_tool:main"

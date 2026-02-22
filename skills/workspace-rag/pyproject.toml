@@ -1,0 +1,13 @@
+[project]
+name = "workspace-rag"
+version = "0.2.0"
+description = "Workspace RAG search with R²AG-style relevance scores"
+requires-python = ">=3.10"
+dependencies = [
+    "sentence-transformers>=3.0.0",
+    "numpy>=1.24.0",
+    "torch>=2.0.0",
+]
+
+[project.scripts]
+workspace-rag = "workspace_rag:main"
