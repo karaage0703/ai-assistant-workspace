@@ -21,6 +21,7 @@
 | **workspace-rag** | ワークスペース全体をベクトル検索 | 「ワークスペース検索して」「RAGで探して」 |
 | **xangi-settings** | xangiの設定をチャットから動的に変更 | 「設定確認して」「タイムアウト変えて」 |
 | **youtube-notes** | YouTube動画の字幕からノートを作成 | 「YouTube動画をまとめて」 |
+| **spontaneous-talk** | AIが自発的に話しかける（確率判定+cron） | 「話しかけて」「spontaneous-talk」 |
 
 ## SKILL.mdの書き方
 
