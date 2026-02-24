@@ -22,6 +22,7 @@ AIコーディングツール（Claude Code / Codex CLI / Gemini CLI）をパー
 - **カレンダー** — ICSカレンダー（Googleカレンダー等）の予定を確認
 - **健康管理** — 食事・運動の記録と健康アドバイス
 - **設定変更** — チャットからAIアシスタントの設定を変更（xangi利用時）
+- **自発的おしゃべり** — AIが自発的に話しかけてくる（確率判定＋cron対応）
 - **スキル作成** — 自分だけのカスタムスキルを作る
 
 ## クイックスタート
@@ -78,6 +79,7 @@ ai-assistant-workspace/
     ├── skill-creator/     # スキル作成スキル
     ├── tech-news-curation/# テックニューススキル
     ├── transcriber/       # 文字起こしスキル
+    ├── spontaneous-talk/  # 自発的おしゃべりスキル
     ├── workspace-rag/     # ワークスペース検索スキル
     ├── xangi-settings/    # xangi設定変更スキル
     └── youtube-notes/     # YouTubeノートスキル
