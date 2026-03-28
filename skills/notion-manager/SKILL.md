@@ -85,6 +85,33 @@ uv run python notion_tool.py append <page_id> -b "リンクテキスト" --link 
 uv run python notion_tool.py append <page_id> --bullets "項目1" "項目2" "項目3"
 ```
 
+### 添付ファイルのダウンロード
+
+Notionページに添付されたファイル（PDF等）をダウンロードする手順：
+
+```bash
+# 1. JSON出力でファイルブロックの署名付きURLを取得
+cd [WORKSPACE]/skills/notion-manager
+uv run python notion_tool.py read <page_id> --json 2>/dev/null > /tmp/notion_output.json
+
+# 2. fileブロックからURLを抽出
+python3 -c "
+import json
+with open('/tmp/notion_output.json') as f:
+    data = json.load(f)
+for b in data.get('results', []):
+    if b.get('type') == 'file':
+        url = b['file']['file']['url']
+        name = b['file'].get('name', 'unknown')
+        print(f'{name}: {url}')
+"
+
+# 3. curlでダウンロード
+curl -sL -o /tmp/<filename> "<上記で取得したURL>"
+```
+
+**注意:** 署名付きURLは1時間で期限切れになるため、取得後すぐにダウンロードすること。
+
 ### 日記作成（画像付き）
 ```bash
 # シンプルな日記

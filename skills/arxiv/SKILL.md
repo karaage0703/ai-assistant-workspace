@@ -210,7 +210,9 @@ cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex 2401.12345 --section
 
 ## 結果の提示
 
-分析結果はチャットに提示して完了。
+分析結果はチャットに提示して完了。**複数論文がある場合は、論文ごとに `===` で区切って出力する**（xangiが別メッセージに分割する）。
+
+※ notes/への保存が必要な場合は、ユーザーから「メモして」「notesに保存して」と依頼されたときに `note-taking` スキルを使用。
 
 ### 必須セクション
 - 基本情報（arXivリンク、著者、投稿日）
@@ -221,6 +223,7 @@ cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex 2401.12345 --section
 - **話題性根拠**: スコア内訳と根拠（トレンドモードの場合）
 - コメント
 - **次に読む論文**: 関連研究3-5件
+- 関連ノート（Obsidianリンク形式）
 
 ## 注意点
 

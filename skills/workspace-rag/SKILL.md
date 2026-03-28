@@ -49,6 +49,9 @@ uv run python workspace_rag.py index -w [WORKSPACE]
 
 # 強制再インデックス（全ファイル再処理）
 uv run python workspace_rag.py index -w [WORKSPACE] -f
+
+# ファイルサイズ上限を変更（デフォルト100KB、0=無制限）
+uv run python workspace_rag.py index -w [WORKSPACE] --max-file-size 200000
 ```
 
 **所要時間の目安:**
@@ -113,6 +116,8 @@ curl -s -X POST "http://127.0.0.1:7891/reindex"
 - **vector**: ベクトル検索のみ。日本語の意味検索に最適
 - **keyword**: FTS5 trigramのみ。英語キーワード・コード検索に最適（超高速 ~10ms）
 
+**注意:** memory-RAG（port 7890）とは別のサービス。workspace-ragはワークスペース全体を対象とし、memory-RAGはmemory/とnotes/のみを対象とする。
+
 ### Step 3b: 検索（CLI — サーバーが動いていない場合）
 
 ```bash
@@ -143,7 +148,7 @@ uv run python workspace_rag.py search -w [WORKSPACE] -q "検索クエリ" --json
 
 **報告フォーマット例：**
 ```
-🔍 ワークスペースRAGで「検索クエリ」を検索（10件ヒット）
+ワークスペースRAGで「検索クエリ」を検索（10件ヒット）
 
 | # | ファイル | 関連度 |
 |---|---------|--------|
@@ -170,8 +175,8 @@ uv run python workspace_rag.py search -w [WORKSPACE] -q "検索クエリ" --json
 
 **R²AG簡易版（関連度スコア付き）:**
 ```
-文書1 [関連度: 0.92 (高)]: ...  ← 「これは重要」
-文書2 [関連度: 0.45 (低)]: ...  ← 「これは参考程度」
+文書1 [関連度: 0.92 (高)]: ...  <- 「これは重要」
+文書2 [関連度: 0.45 (低)]: ...  <- 「これは参考程度」
 質問に答えて
 ```
 
@@ -207,7 +212,17 @@ systemctl --user restart workspace-rag
 
 ## カスタマイズ
 
-除外パターンや対象拡張子を変更したい場合は、`scripts/workspace_rag.py` の `DEFAULT_EXCLUDE_PATTERNS` / `DEFAULT_INCLUDE_EXTENSIONS` を直接編集する。
+### パス重み付け
+
+`scripts/workspace_rag.py` の `PATH_WEIGHTS` でディレクトリごとの検索スコア重みを設定できる。重要なディレクトリのスコアを上げることで、検索結果の精度が向上する。
+
+### 除外パターン・対象拡張子
+
+`scripts/workspace_rag.py` の `DEFAULT_EXCLUDE_PATTERNS` / `DEFAULT_INCLUDE_EXTENSIONS` を直接編集する。
+
+### ファイルサイズ上限
+
+デフォルトは100KB。`--max-file-size` オプションまたは `DEFAULT_MAX_FILE_SIZE` 定数で変更可能。
 
 ## 技術仕様
 
@@ -217,17 +232,18 @@ systemctl --user restart workspace-rag
 - **データ保存先:** `[WORKSPACE]/.workspace_rag/index_<hash>.db`
 - **対応形式:** `.md`, `.txt`, `.py`, `.js`, `.ts`, `.json`, `.yaml`, `.toml`, `.csv` 等
 - **除外対象:** `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, 画像・バイナリ等
+- **スコア計算:** base_score * path_weight * freshness_score
 
 ## エラー対処
 
 **「Index not found」エラー:**
-→ `index` コマンドを先に実行する
+-> `index` コマンドを先に実行する
 
 **OOM（メモリ不足）でインデックスが途中で停止:**
-→ バッチ処理+DB再接続でOOMを回避する設計だが、それでも落ちる場合は対象ディレクトリを絞って段階的にインデックスする
+-> バッチ処理+DB再接続でOOMを回避する設計だが、それでも落ちる場合は対象ディレクトリを絞って段階的にインデックスする
 
 **検索結果が的外れ:**
-→ クエリを具体的にする、`-s` で最低スコア閾値を上げる（0.5〜0.7）
+-> クエリを具体的にする、`-s` で最低スコア閾値を上げる（0.5〜0.7）
 
 ## 使用例
 
