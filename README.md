@@ -21,6 +21,7 @@ AIコーディングツール（Claude Code / Codex CLI / Gemini CLI）をパー
 - **コードレビュー** — マルチAI（Claude/Codex/Gemini）でPRを体系的にレビュー
 - **GitHubリポジトリ分析** — リポジトリの構造・技術スタックを分析
 - **ワークスペース検索** — ファイルをベクトル検索で横断検索
+- **Google Workspace** — Gmail・Google Drive・Google Calendarを操作（gogcli）
 - **カレンダー** — ICSカレンダー（Googleカレンダー等）の予定を確認
 - **健康管理** — 食事・運動の記録と健康アドバイス
 - **設定変更** — チャットからAIアシスタントの設定を変更（xangi利用時）
@@ -75,6 +76,7 @@ ai-assistant-workspace/
     ├── arxiv/             # arXiv論文調査スキル
     ├── code-reviewer/     # コードレビュースキル
     ├── github-repo-analyzer/ # GitHubリポジトリ分析スキル
+    ├── google-workspace/  # Google Workspace連携スキル
     ├── health-advisor/    # 健康管理スキル
     ├── marp-slides/       # スライド作成スキル
     ├── note-taking/       # メモ管理スキル
@@ -145,6 +147,13 @@ ai-assistant-workspace/
 ### テックニュースをチェック
 ```
 「今日のテックニュースを教えて」
+```
+
+### Gmailをチェックする
+```
+「メールチェックして」
+「未読メール見せて」
+「Driveのファイル一覧」
 ```
 
 ### カレンダーを確認する

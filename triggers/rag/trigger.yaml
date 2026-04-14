@@ -1,0 +1,5 @@
+name: rag
+trigger: "!rag"
+description: "ワークスペースRAGで検索する（例: !rag スキルの作り方）"
+handler: handler.sh
+feedback: true

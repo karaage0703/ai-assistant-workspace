@@ -1,0 +1,5 @@
+name: technews
+trigger: "!technews"
+description: "最新テックニュースを取得する"
+handler: handler.sh
+feedback: false

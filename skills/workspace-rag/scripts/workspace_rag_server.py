@@ -32,6 +32,11 @@ DEFAULT_PORT = 7891
 VECTOR_WEIGHT = 0.7
 FTS_WEIGHT = 0.3
 
+# 自動reindex状態（グローバル）
+_auto_reindex_enabled = True
+_last_reindex_time = 0
+_reindex_count = 0
+
 # グローバル（サーバー内で共有）
 _model = None
 _conn = None
@@ -201,17 +206,24 @@ def do_search(query: str, top_k: int = 5, min_score: float = 0.3, mode: str = "h
         row = cursor.fetchone()
         if row:
             file_path, chunk_index, content = row
+            from workspace_rag import get_freshness_score
+            fr = get_freshness_score(file_path, _workspace)
+            final_score = combined * fr
             result = {
                 "file_path": file_path,
                 "chunk_index": chunk_index,
                 "content": content,
-                "score": round(combined, 4),
+                "score": round(final_score, 4),
+                "base_score": round(combined, 4),
+                "freshness": round(fr, 2),
             }
             if mode == "hybrid":
                 result["vector_score"] = round(v_score, 4)
                 result["fts_score"] = round(f_score, 4)
             results.append(result)
 
+    # 鮮度適用後に再ソート
+    results.sort(key=lambda r: r["score"], reverse=True)
     return results
 
 
@@ -232,13 +244,28 @@ class WorkspaceRAGHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
 
         if parsed.path == "/health":
+            # DBからファイル数を取得
+            file_count = 0
+            db_size_mb = 0
+            try:
+                cur = _conn.execute(f"SELECT COUNT(DISTINCT file_path) FROM chunks WHERE workspace = ?", (_workspace_name,))
+                file_count = cur.fetchone()[0]
+                db_size_mb = round(_db_path.stat().st_size / (1024 * 1024), 1) if _db_path.exists() else 0
+            except Exception:
+                pass
+            from datetime import datetime, timezone
             self._send_json({
                 "status": "ok",
                 "workspace": _workspace,
                 "workspace_name": _workspace_name,
                 "chunks_cached": len(_embedding_ids) if _embedding_ids is not None else 0,
+                "files_indexed": file_count,
+                "db_size_mb": db_size_mb,
                 "port": DEFAULT_PORT,
                 "model": DEFAULT_MODEL,
+                "auto_reindex": _auto_reindex_enabled,
+                "reindex_count": _reindex_count,
+                "last_reindex": datetime.fromtimestamp(_last_reindex_time, tz=timezone.utc).isoformat() if _last_reindex_time else None,
             })
 
         elif parsed.path == "/search":
@@ -319,6 +346,8 @@ def main():
     parser = argparse.ArgumentParser(description="Workspace RAG Server")
     parser.add_argument("-w", "--workspace", required=True, help="Workspace directory")
     parser.add_argument("-p", "--port", type=int, default=DEFAULT_PORT, help=f"Port (default: {DEFAULT_PORT})")
+    parser.add_argument("--no-auto-reindex", action="store_true", help="Disable auto-reindex (default: enabled, every 30min)")
+    parser.add_argument("--reindex-interval", type=int, default=1800, help="Auto-reindex interval in seconds (default: 1800)")
     args = parser.parse_args()
 
     _workspace = str(Path(args.workspace).resolve())
@@ -364,11 +393,55 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
+    # 自動reindex（デフォルトON、--no-auto-reindexで無効化）
+    import threading
+    global _auto_reindex_enabled, _last_reindex_time, _reindex_count
+    _auto_reindex_enabled = not args.no_auto_reindex
+    _last_reindex_time = time.time()
+    _reindex_count = 0
+
+    if _auto_reindex_enabled:
+        def auto_reindex():
+            global _embedding_ids, _embedding_matrix, _last_reindex_time, _reindex_count, _conn
+            import gc
+            interval = args.reindex_interval
+            while True:
+                time.sleep(interval)
+                try:
+                    from workspace_rag import index_workspace
+                    print(f"[auto-reindex] Starting (interval={interval}s)...", file=sys.stderr, flush=True)
+                    index_workspace(_workspace, force=False)
+                    # DB再接続してメモリリークを防止
+                    try:
+                        _conn.close()
+                    except Exception:
+                        pass
+                    _conn = init_db(_db_path)
+                    _embedding_ids, _embedding_matrix = load_embeddings_cache(_conn, _workspace_name)
+                    _last_reindex_time = time.time()
+                    _reindex_count += 1
+                    # GC強制実行
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    rss_mb = os.popen("ps -o rss= -p %d" % os.getpid()).read().strip()
+                    rss_mb = int(rss_mb) // 1024 if rss_mb else 0
+                    print(f"[auto-reindex] Done. {len(_embedding_ids)} embeddings cached. (count={_reindex_count}, RSS={rss_mb}MB)", file=sys.stderr, flush=True)
+                except Exception as e:
+                    print(f"[auto-reindex] Error: {e}", file=sys.stderr, flush=True)
+
+        reindex_thread = threading.Thread(target=auto_reindex, daemon=True)
+        reindex_thread.start()
+
     # サーバー起動
     server = HTTPServer(("127.0.0.1", DEFAULT_PORT), WorkspaceRAGHandler)
     print(f"Workspace RAG Server running on http://127.0.0.1:{DEFAULT_PORT}", file=sys.stderr, flush=True)
     print(f"  Workspace: {_workspace} ({_workspace_name})", file=sys.stderr, flush=True)
     print(f"  Chunks: {len(_embedding_ids)}", file=sys.stderr, flush=True)
+    if _auto_reindex_enabled:
+        print(f"  Auto-reindex: every {args.reindex_interval}s (disable with --no-auto-reindex)", file=sys.stderr, flush=True)
+    else:
+        print(f"  Auto-reindex: disabled", file=sys.stderr, flush=True)
     print(f"  Endpoints:", file=sys.stderr, flush=True)
     print(f"    GET  /search?q=...&k=5&s=0.3", file=sys.stderr, flush=True)
     print(f"    GET  /health", file=sys.stderr, flush=True)

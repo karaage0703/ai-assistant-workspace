@@ -1,0 +1,5 @@
+name: weather
+trigger: "!weather"
+description: "天気予報を取得する（例: !weather 名古屋）"
+handler: handler.sh
+feedback: true

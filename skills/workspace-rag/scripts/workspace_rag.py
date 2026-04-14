@@ -34,6 +34,8 @@ DEFAULT_EXCLUDE_PATTERNS = [
     r"\.git/",
     r"node_modules/",
     r"__pycache__/",
+    r"^tmp/",
+    r"^tools/",
     r"\.venv/",
     r"venv/",
     r"\.pyc$",
@@ -71,11 +73,30 @@ DEFAULT_EXCLUDE_PATTERNS = [
     r"Thumbs\.db$",
     r"\.workspace_rag/",
     r"\.xangi/",
-    r"^tmp/",
     r"dist/",
     r"build/",
     r"\.next/",
+    r"\.pio/",
+    r"\.obsidian/",
+    r"\.min\.js$",
+    r"\.bundle\.js$",
 ]
+
+# ファイルサイズ上限（バンドル済みJS等を排除）
+DEFAULT_MAX_FILE_SIZE = 100 * 1024  # 100KB
+
+
+def get_freshness_score(file_path: str, workspace: str = "") -> float:
+    """ファイルの鮮度スコア（新しいほど高い、最終更新日時ベース）"""
+    import time
+    try:
+        full_path = os.path.join(workspace, file_path) if workspace else file_path
+        mtime = os.path.getmtime(full_path)
+        days_old = (time.time() - mtime) / 86400
+        return max(0.5, 1.0 - days_old / 365)
+    except Exception:
+        return 0.7  # デフォルト
+
 
 # 対象拡張子
 DEFAULT_INCLUDE_EXTENSIONS = {
@@ -94,6 +115,7 @@ DEFAULT_INCLUDE_EXTENSIONS = {
     ".gitignore", ".gitattributes",
     ".env", ".env.example",
     ".csv",
+    ".jsonl",
 }
 
 
