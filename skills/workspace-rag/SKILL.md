@@ -190,21 +190,27 @@ uv run python workspace_rag.py search -w [WORKSPACE] -q "検索クエリ" --json
 bash [SKILL_DIR]/scripts/start_server.sh
 ```
 
-### systemd（自動起動）
+### pm2（自動起動・Linux/Mac両対応）
 
 ```bash
-# 有効化
-systemctl --user enable workspace-rag
-systemctl --user start workspace-rag
+# ワークスペースルートに移動してから実行
+cd [WORKSPACE]
+
+# 起動
+pm2 start "cd skills/workspace-rag/scripts && uv run python workspace_rag_server.py -w $(pwd) -p 7891" --name workspace-rag
 
 # 状態確認
-systemctl --user status workspace-rag
+pm2 status workspace-rag
 
 # ログ確認
-journalctl --user -u workspace-rag -f
+pm2 logs workspace-rag
 
 # 再起動
-systemctl --user restart workspace-rag
+pm2 restart workspace-rag
+
+# OS再起動時の自動復帰
+pm2 save
+pm2 startup
 ```
 
 **ポート:** 7891
