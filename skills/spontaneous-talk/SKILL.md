@@ -19,7 +19,7 @@ AIアシスタントがユーザーに自発的に話しかける。
 - 「スキルに従って話しかけています」等のメタ発言禁止
 - ユーザーのプライベート情報を不用意に晒さない
 - **内部状態をユーザーに見せない** — 確率判定の数値、Step名、状態ファイルの中身、「発話する/しない」の判定過程などは一切表示しない。発話しない場合は何も表示しない。発話する場合は発話内容のみ出力する
-- **万が一、内部状態を含むメッセージを送ってしまったら** → `!discord edit last 発話内容のみ` で即編集する
+- **万が一、内部状態を含むメッセージを送ってしまったら** → `xangi-cmd discord_edit --channel <チャンネルID> --message-id <メッセージID> --content "発話内容のみ"` で即編集する
 
 ## 設定
 
@@ -126,17 +126,17 @@ bash [SKILL_DIR]/check_speak.sh [WORKSPACE]/memory/spontaneous-talk-state.json
 
 ## スケジュール登録
 
-xangiの場合、`!schedule` コマンドで登録できます。
+xangiの場合、`xangi-cmd` で登録できます。
 
 ```
-!schedule cron */30 * * * * spontaneous-talk を実行
+xangi-cmd schedule_add --input "cron */30 * * * * spontaneous-talk を実行" --channel <チャンネルID>
 ```
 
 **管理：**
 ```
-!schedule list          # 一覧表示
-!schedule toggle <番号>  # 有効/無効切り替え
-!schedule remove <番号>  # 削除
+xangi-cmd schedule_list              # 一覧表示
+xangi-cmd schedule_toggle --id <ID>  # 有効/無効切り替え
+xangi-cmd schedule_remove --id <ID>  # 削除
 ```
 
 ## チェック項目
@@ -147,7 +147,7 @@ xangiの場合、`!schedule` コマンドで登録できます。
 - [ ] `NO_SPEAK` の場合、何も出力せず即終了しているか（ツール呼び出し・テキスト出力一切なし）
 - [ ] `SPEAK` の場合、発話内容のみ出力しているか（判定過程や内部状態を含めていないか）
 - [ ] **出力前チェック**: 「cronトリガー」「SPEAK」「確率」「前回」「Step」等の内部ワードが含まれていたら削除すること
-- [ ] **出力後チェック**: 送信したメッセージに内部状態が漏れていたら、即座に `!discord edit last 発話内容のみ` で修正する
+- [ ] **出力後チェック**: 送信したメッセージに内部状態が漏れていたら、即座に `xangi-cmd discord_edit` で修正する
 - [ ] 状態ファイルを更新したか（発話した場合のみ）
 
 ## 手動発動
