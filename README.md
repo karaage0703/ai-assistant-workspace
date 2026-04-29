@@ -20,12 +20,16 @@ AIコーディングツール（Claude Code / Codex CLI / Gemini CLI）をパー
 - **arXiv論文調査** — 論文検索・トレンド発見・詳細分析を統合的に実行
 - **コードレビュー** — マルチAI（Claude/Codex/Gemini）でPRを体系的にレビュー
 - **GitHubリポジトリ分析** — リポジトリの構造・技術スタックを分析
-- **ワークスペース検索** — ファイルをベクトル検索で横断検索
+- **ワークスペース検索** — ファイルをベクトル検索で横断検索（workspace-RAG）
+- **アイデア発想** — ワークスペース内の遠い知識をつないで企画を出す（bridge-ideas）
+- **マルチAI協調** — Claude / Codex / Gemini で並行調査・レビュー
+- **図表生成** — フローチャート・アーキテクチャ図を自動生成（Pillow / Mermaid / PlantUML）
 - **Google Workspace** — Gmail・Google Drive・Google Calendarを操作（gogcli）
 - **カレンダー** — ICSカレンダー（Googleカレンダー等）の予定を確認
 - **健康管理** — 食事・運動の記録と健康アドバイス
 - **設定変更** — チャットからAIアシスタントの設定を変更（xangi利用時）
 - **自発的おしゃべり** — AIが自発的に話しかけてくる（確率判定＋cron対応）
+- **トリガー（軽量ツール）** — LLMがFunction Callingで呼ぶ簡易ツール（天気・ニュース・RAG検索など）
 - **スキル作成** — 自分だけのカスタムスキルを作る
 
 ## クイックスタート
@@ -69,26 +73,33 @@ ai-assistant-workspace/
 │   └── skills -> ../skills  # Gemini CLI 用シンボリックリンク
 ├── memory/                # 日記・メモの保存先
 ├── notes/                 # ノート・調査メモの保存先
-└── skills/                # スキル（AIの拡張機能）
-    ├── calendar/          # カレンダースキル
-    ├── cat-diary/         # 猫日記スキル
-    ├── diary/             # 日記スキル
-    ├── arxiv/             # arXiv論文調査スキル
-    ├── code-reviewer/     # コードレビュースキル
-    ├── github-repo-analyzer/ # GitHubリポジトリ分析スキル
-    ├── google-workspace/  # Google Workspace連携スキル
-    ├── health-advisor/    # 健康管理スキル
-    ├── marp-slides/       # スライド作成スキル
-    ├── note-taking/       # メモ管理スキル
-    ├── notion-manager/    # Notion連携スキル
-    ├── podcast/           # ポッドキャストスキル
-    ├── skill-creator/     # スキル作成スキル
-    ├── tech-news-curation/# テックニューススキル
-    ├── transcriber/       # 文字起こしスキル
-    ├── spontaneous-talk/  # 自発的おしゃべりスキル
-    ├── workspace-rag/     # ワークスペース検索スキル
-    ├── xangi-settings/    # xangi設定変更スキル
-    └── youtube-notes/     # YouTubeノートスキル
+├── skills/                # スキル（AIの拡張機能）
+│   ├── arxiv/             # arXiv論文調査スキル
+│   ├── bridge-ideas/      # 知識を繋いでアイデア生成
+│   ├── calendar/          # カレンダースキル
+│   ├── cat-diary/         # 猫日記スキル
+│   ├── code-reviewer/     # マルチAIコードレビュースキル
+│   ├── diagram-generator/ # 図表自動生成スキル
+│   ├── diary/             # 日記スキル
+│   ├── github-repo-analyzer/ # GitHubリポジトリ分析スキル
+│   ├── google-workspace/  # Google Workspace連携スキル
+│   ├── health-advisor/    # 健康管理スキル
+│   ├── marp-slides/       # スライド作成スキル
+│   ├── multi-agent/       # マルチAI協調スキル
+│   ├── note-taking/       # メモ管理スキル
+│   ├── notion-manager/    # Notion連携スキル
+│   ├── podcast/           # ポッドキャストスキル
+│   ├── skill-creator/     # スキル作成スキル
+│   ├── tech-news-curation/# テックニューススキル
+│   ├── transcriber/       # 文字起こしスキル
+│   ├── spontaneous-talk/  # 自発的おしゃべりスキル
+│   ├── workspace-rag/     # ワークスペース全体検索スキル
+│   ├── xangi-settings/    # xangi設定変更スキル
+│   └── youtube-notes/     # YouTubeノートスキル
+└── triggers/              # LLMがFunction Callingで呼び出す軽量ツール
+    ├── rag/                # ワークスペースRAG検索
+    ├── technews/           # 最新テックニュース取得（RSS）
+    └── weather/            # 天気予報取得（wttr.in）
 ```
 
 ## 使い方のヒント
@@ -168,10 +179,40 @@ ai-assistant-workspace/
 「今週の健康レポート」
 ```
 
+### マルチAIで考える・レビューする
+```
+「みんなで考えて: ○○のアーキテクチャ」
+「複数のAIでこのPRをレビューして」
+```
+
+### アイデアを出す
+```
+「アイデア出して: 次のブログのネタ」
+「過去の記事と最近のメモをつないで」
+```
+
+### 図表を作る
+```
+「アーキテクチャ図描いて」
+「フローチャートにして」
+```
+
 ### 自分だけのスキルを作る
 ```
 「読書メモを管理するスキルを作って」
 ```
+
+## トリガー（LLM呼び出し用の軽量ツール）
+
+`triggers/` ディレクトリには **LLMがFunction Callingで呼び出す軽量ツール**のテンプレートがあります。スキルとツール呼び出しの中間に位置する仕組みで、ローカルLLMでも再現性高く決まった処理を実行できるように設計されています。コンセプト詳細は [Trigger: ローカルLLM用簡易スキルシステム](https://zenn.dev/karaage0703/articles/89631872ca5a86) を参照。
+
+| トリガー | 内容 | LLMが呼ぶ場面 |
+|----------|------|----------------|
+| **rag** | ワークスペース全体をRAG検索 | 「過去のメモから○○探して」「あの時話した○○は？」 |
+| **technews** | 最新テックニュース（RSS）を取得 | 「テックニュース教えて」「最近の話題は？」 |
+| **weather** | 天気予報を取得（wttr.in） | 「今日の天気は？」「名古屋の天気」 |
+
+仕組み・新規作成手順は `triggers/README.md` を参照してください。
 
 ## カスタマイズ
 
