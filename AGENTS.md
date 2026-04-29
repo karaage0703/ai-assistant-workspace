@@ -42,9 +42,15 @@
 ## 毎セッションの手順
 
 起動したらまず：
-1. `MEMORY.md` があれば読む（長期記憶の確認）
-2. `memory/` 内の最新ファイル（今日＋昨日）を読んで最近の文脈を把握
-3. ユーザーの依頼に応じて作業開始
+1. `memory/YYYYMMDD.md`（今日＋昨日）を読んで最近の文脈を把握
+2. **メインセッション**（ユーザーとの直接チャット）の場合：`MEMORY.md` も読む
+3. **チャットプラットフォーム**（Discord/Slack等）の場合：
+   - 最初のメッセージを受け取ったら、そのチャンネルの直近メッセージ（10件程度）を確認して文脈を把握
+   - 取得方法は使用中のプラットフォーム/ボット（例: xangiの`xangi-cmd discord_history`）に依存
+   - セッション再開時は会話の流れが分からないので、返答前に必ず行う
+4. **スキルマッチング**（毎回のメッセージで実行）
+   - メッセージ内のキーワードが各スキルのdescription/トリガーフレーズに該当するか確認
+   - 該当スキルがあれば、自己流で対応せず必ず該当の `SKILL.md` を読んでから対応する
 
 許可を求めない。やる。
 
@@ -98,26 +104,15 @@
 
 ---
 
-## スキル一覧
+## スキル
 
-以下のスキルが利用可能です。ユーザーの依頼に応じて、各スキルの `SKILL.md` を読んで実行してください。
+スキルは `skills/` ディレクトリに一元管理。一覧と各スキルの説明・トリガーフレーズは `skills/README.md` を参照。新規作成は `skills/skill-creator/SKILL.md` を使う。
 
-- **日記** — 「日記書いて」「日記の時間」 → `skills/diary/SKILL.md`
-- **猫日記** — 「猫日記」「猫の写真を記録して」 → `skills/cat-diary/SKILL.md`
-- **メモ管理** — 「メモして」「ノートにまとめて」 → `skills/note-taking/SKILL.md`
-- **Notion** — 「Notionで検索して」「Notionにページ作って」 → `skills/notion-manager/SKILL.md`
-- **文字起こし** — 「文字起こしして」「音声をテキストに」 → `skills/transcriber/SKILL.md`
-- **ポッドキャスト** — 「ポッドキャストまとめて」 → `skills/podcast/SKILL.md`
-- **YouTubeノート** — 「YouTube動画をまとめて」 → `skills/youtube-notes/SKILL.md`
-- **スライド作成** — 「スライド作って」「プレゼン作成」 → `skills/marp-slides/SKILL.md`
-- **テックニュース** — 「テックニュース」「最新ニュース」 → `skills/tech-news-curation/SKILL.md`
-- **GitHubリポジトリ分析** — 「このリポジトリ分析して」 → `skills/github-repo-analyzer/SKILL.md`
-- **ワークスペース検索** — 「ファイル検索して」「RAGで探して」 → `skills/workspace-rag/SKILL.md`
-- **スキル作成** — 「スキルを作って」 → `skills/skill-creator/SKILL.md`
-- **xangi設定** — 「設定確認して」「タイムアウト変えて」 → `skills/xangi-settings/SKILL.md`
-- **ヘルスアドバイザー** — 「健康チェック」「食事記録して」「運動記録して」 → `skills/health-advisor/SKILL.md`
-- **カレンダー** — 「今日の予定」「明日の予定」「スケジュール確認」 → `skills/calendar/SKILL.md`
-- **自発的おしゃべり** — 「話しかけて」で手動発動も可能 → `skills/spontaneous-talk/SKILL.md`
+---
+
+## トリガー
+
+`triggers/` には LLM が Function Calling で呼び出す軽量ツールがあります。一覧と仕組みは `triggers/README.md` を参照。
 
 ---
 
