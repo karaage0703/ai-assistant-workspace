@@ -1,6 +1,6 @@
 ---
 name: xs:notion-manager
-description: Notion APIでページ検索・閲覧・作成、ファイルアップロード、画像付き日記作成を行うスキル。「Notionで検索して」「Notionに日記書いて」「Notionにファイルアップロードして」で使用。
+description: Notion APIでページ検索・閲覧・作成、ファイルアップロード、画像付き日記作成、個別ブロックの更新・削除を行うスキル。「Notionで検索して」「Notionに日記書いて」「Notionにファイルアップロードして」「Notionの個別ブロックを修正して」で使用。
 ---
 
 # Notion Manager
@@ -38,6 +38,7 @@ uv run python notion_tool.py search "検索ワード" --json   # JSON出力
 ```bash
 uv run python notion_tool.py read <page_id>
 uv run python notion_tool.py read <page_id> --json
+uv run python notion_tool.py read <page_id> --with-ids  # 各ブロックIDを表示（編集対象を特定するため）
 ```
 
 ### ページ作成
@@ -67,6 +68,43 @@ uv run python notion_tool.py upload photo.jpg <page_id> -c "東京の風景"
 - 動画: mp4, mov, webm, avi, mkv
 - その他: pdf, pptx, docx, xlsx
 
+### 個別ブロックの取得・更新・削除
+
+```bash
+# 1. ブロックIDを調べる（read --with-ids でページ内の全ブロックIDを表示）
+uv run python notion_tool.py read <page_id> --with-ids
+
+# 2. 単一ブロックの取得
+uv run python notion_tool.py get-block <block_id>
+uv run python notion_tool.py get-block <block_id> --json
+
+# 3. ブロックのテキスト更新（既存タイプを維持）
+uv run python notion_tool.py update <block_id> -t "新しいテキスト"
+
+# 4. リンク付きテキストに変更
+uv run python notion_tool.py update <block_id> -t "クリックでサイトへ" --link "https://example.com"
+
+# 5. To-doブロックのチェック切替
+uv run python notion_tool.py update <block_id> --checked
+uv run python notion_tool.py update <block_id> --unchecked
+
+# 6. ブロックタイプを切り替え（段落 ↔ 見出し ↔ 箇条書き等）
+uv run python notion_tool.py update <block_id> --type bulleted_list_item    # 段落→箇条書き
+uv run python notion_tool.py update <block_id> -l 3                         # 見出し2 → 見出し3
+uv run python notion_tool.py update <block_id> --type heading_2 -t "新タイトル"  # テキストも同時変更
+
+# 7. ブロック削除（-y で確認スキップ）
+uv run python notion_tool.py delete <block_id> -y
+```
+
+**対応ブロックタイプ:** paragraph, heading_1〜3, bulleted_list_item, numbered_list_item, to_do, quote, code
+
+**注意:**
+- Notion API はブロックタイプの直接変更を許可しないため、`--type` 指定時は **新タイプを直後に挿入 → 旧ブロック削除** で位置を保ちつつ置き換える（新ブロックIDが返る）
+- `--type` の対応タイプ: paragraph / heading_1〜3 / bulleted_list_item / numbered_list_item / to_do / quote
+- 画像・動画・ファイルブロックは `update` 非対応 → `delete` して `upload` で再投稿
+- `delete` は archive 扱い（Notion上はゴミ箱に入る、復元可）
+
 ### ページに追記（append）
 ```bash
 # 見出し追加
@@ -87,30 +125,7 @@ uv run python notion_tool.py append <page_id> --bullets "項目1" "項目2" "項
 
 ### 添付ファイルのダウンロード
 
-Notionページに添付されたファイル（PDF等）をダウンロードする手順：
-
-```bash
-# 1. JSON出力でファイルブロックの署名付きURLを取得
-cd [WORKSPACE]/skills/notion-manager
-uv run python notion_tool.py read <page_id> --json 2>/dev/null > /tmp/notion_output.json
-
-# 2. fileブロックからURLを抽出
-python3 -c "
-import json
-with open('/tmp/notion_output.json') as f:
-    data = json.load(f)
-for b in data.get('results', []):
-    if b.get('type') == 'file':
-        url = b['file']['file']['url']
-        name = b['file'].get('name', 'unknown')
-        print(f'{name}: {url}')
-"
-
-# 3. curlでダウンロード
-curl -sL -o /tmp/<filename> "<上記で取得したURL>"
-```
-
-**注意:** 署名付きURLは1時間で期限切れになるため、取得後すぐにダウンロードすること。
+`read --json` で取得した JSON の `file` ブロックには署名付きURLが入る。`curl -sL -o <out> <url>` でダウンロード。**URLは1時間で期限切れ**なので取得後すぐに。
 
 ### 日記作成（画像付き）
 ```bash
@@ -124,62 +139,11 @@ uv run python notion_tool.py diary <parent_page_id> \
   -i photo1.jpg photo2.jpg
 ```
 
-## 対話フロー
-
-### Notion検索
-
-**ユーザー:** 「Notionで〇〇を検索して」
-
-```bash
-cd [WORKSPACE]/skills/notion-manager
-uv run python notion_tool.py search "〇〇"
-```
-
-### 画像付き日記
-
-**ユーザー:** 「今日の写真をNotionに日記として記録して」
-
-1. 画像ファイルのパスを確認
-2. 日記用親ページIDを確認
-3. 実行:
-   ```bash
-   uv run python notion_tool.py diary <parent_id> \
-     -t "2026-01-30 日記" \
-     -c "今日の出来事" \
-     -i /path/to/photo.jpg
-   ```
-
-### 資料アップロード
-
-**ユーザー:** 「このスライドをNotionにアップロードして」
-
-```bash
-uv run python notion_tool.py upload presentation.pptx <page_id> --as-file
-```
-
 ## Page IDの取得方法
 
-1. NotionでページをWebブラウザで開く
-2. URLの末尾の32文字がPage ID
-   ```
-   https://notion.so/Page-Title-abc123def456...
-                                  ^^^^^^^^^^^^ これ
-   ```
+NotionのページURL末尾の32文字（ハイフンなし）がPage ID。
+`https://notion.so/Page-Title-abc123def456...` の `abc123def456...` 部分。
 
-## 制限事項
+---
 
-- ファイルサイズ: 20MB以下
-- 対応形式: jpg, png, gif, webp, pdf, pptx, docx, xlsx 等
-- APIキー未設定だとエラー
-- 接続許可のないページにはアクセス不可
-
-## トラブルシューティング
-
-### "unauthorized" エラー
-→ APIキーが正しいか確認、ページに「接続」許可したか確認
-
-### "object_not_found" エラー
-→ Page IDが正しいか確認、接続許可があるか確認
-
-### ファイルアップロード失敗
-→ 20MB以下か確認、対応形式か確認
+制限事項・トラブルシューティングは [`README.md`](./README.md) を参照。
