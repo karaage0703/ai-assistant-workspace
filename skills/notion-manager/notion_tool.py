@@ -418,7 +418,7 @@ def add_bullet_block(page_id: str, text: str, link: Optional[str] = None) -> dic
 def append_blocks(page_id: str, blocks: list) -> dict:
     """Append multiple blocks to a page."""
     payload = {"children": blocks}
-    
+
     response = requests.patch(
         f"{BASE_URL}/blocks/{page_id}/children",
         headers=get_headers(),
@@ -426,6 +426,200 @@ def append_blocks(page_id: str, blocks: list) -> dict:
     )
     response.raise_for_status()
     return response.json()
+
+
+def get_block(block_id: str) -> dict:
+    """Get a single block."""
+    response = requests.get(
+        f"{BASE_URL}/blocks/{block_id}",
+        headers=get_headers(),
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def update_block(
+    block_id: str,
+    text: Optional[str] = None,
+    link: Optional[str] = None,
+    checked: Optional[bool] = None,
+) -> dict:
+    """Update an existing block (same-type only).
+
+    Notion API only allows updating fields within the existing block type.
+    Changing block type (e.g. paragraph -> heading_2) is not supported by the API.
+    """
+    current = get_block(block_id)
+    block_type = current.get("type")
+
+    supported = {
+        "paragraph", "heading_1", "heading_2", "heading_3",
+        "bulleted_list_item", "numbered_list_item", "to_do", "quote", "code",
+    }
+    if block_type not in supported:
+        raise ValueError(
+            f"Unsupported block type for update: {block_type}. "
+            f"Supported: {sorted(supported)}"
+        )
+
+    if text is None and checked is None:
+        raise ValueError("Specify at least one of: text, checked")
+
+    body: dict = {block_type: {}}
+
+    if text is not None:
+        if link:
+            rich_text = [{"text": {"content": text, "link": {"url": link}}}]
+        else:
+            rich_text = [{"text": {"content": text}}]
+        body[block_type]["rich_text"] = rich_text
+
+    if checked is not None and block_type == "to_do":
+        body[block_type]["checked"] = checked
+
+    response = requests.patch(
+        f"{BASE_URL}/blocks/{block_id}",
+        headers=get_headers(),
+        json=body,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def delete_block(block_id: str) -> dict:
+    """Delete (archive) a block."""
+    response = requests.delete(
+        f"{BASE_URL}/blocks/{block_id}",
+        headers=get_headers(),
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def convert_block_type(
+    block_id: str,
+    new_type: str,
+    text: Optional[str] = None,
+    link: Optional[str] = None,
+) -> dict:
+    """Replace a block with a new one of a different type at the same position.
+
+    Notion API does not allow PATCH to change block type, so this:
+      1. Reads the existing block (for parent ID and current text if needed)
+      2. Inserts a new block of `new_type` immediately after the existing one
+         using `position: { type: "after_block", after_block: { id } }`
+      3. Deletes (archives) the original block
+
+    The new block ends up where the old one was. Returns the new block.
+    """
+    supported = {
+        "paragraph", "heading_1", "heading_2", "heading_3",
+        "bulleted_list_item", "numbered_list_item", "to_do", "quote",
+    }
+    if new_type not in supported:
+        raise ValueError(
+            f"Unsupported new block type: {new_type}. "
+            f"Supported: {sorted(supported)}"
+        )
+
+    current = get_block(block_id)
+    parent = current.get("parent", {})
+    parent_type = parent.get("type")
+    parent_id = parent.get(parent_type) if parent_type else None
+    if not parent_id:
+        raise ValueError(f"Could not determine parent of block {block_id}")
+
+    if text is None:
+        old_type = current.get("type")
+        rich_text = current.get(old_type, {}).get("rich_text", [])
+        text = "".join([t.get("plain_text", "") for t in rich_text])
+
+    if link:
+        new_rich = [{"text": {"content": text, "link": {"url": link}}}]
+    else:
+        new_rich = [{"text": {"content": text}}]
+
+    new_block = {
+        "object": "block",
+        "type": new_type,
+        new_type: {"rich_text": new_rich},
+    }
+
+    payload = {
+        "children": [new_block],
+        "after": block_id,
+    }
+
+    response = requests.patch(
+        f"{BASE_URL}/blocks/{parent_id}/children",
+        headers=get_headers(),
+        json=payload,
+    )
+    if response.status_code >= 400:
+        payload = {
+            "children": [new_block],
+            "position": {"type": "after_block", "after_block": {"id": block_id}},
+        }
+        response = requests.patch(
+            f"{BASE_URL}/blocks/{parent_id}/children",
+            headers=get_headers(),
+            json=payload,
+        )
+    response.raise_for_status()
+    inserted = response.json()
+
+    delete_block(block_id)
+
+    return inserted
+
+
+def blocks_to_text_with_ids(blocks: list) -> str:
+    """Convert blocks to readable text with their block IDs (for editing)."""
+    lines = []
+    for block in blocks:
+        block_type = block.get("type")
+        block_id = block.get("id", "")
+        short_id = block_id.replace("-", "")[:8] if block_id else ""
+
+        text = ""
+        prefix = ""
+        if block_type in ["paragraph", "heading_1", "heading_2", "heading_3",
+                          "bulleted_list_item", "numbered_list_item", "to_do", "quote"]:
+            rich_text = block.get(block_type, {}).get("rich_text", [])
+            text = "".join([t.get("plain_text", "") for t in rich_text])
+            if block_type == "heading_1":
+                prefix = "# "
+            elif block_type == "heading_2":
+                prefix = "## "
+            elif block_type == "heading_3":
+                prefix = "### "
+            elif block_type == "bulleted_list_item":
+                prefix = "- "
+            elif block_type == "numbered_list_item":
+                prefix = "1. "
+            elif block_type == "to_do":
+                checked = block.get("to_do", {}).get("checked", False)
+                prefix = "- [x] " if checked else "- [ ] "
+            elif block_type == "quote":
+                prefix = "> "
+        elif block_type == "image":
+            image = block.get("image", {})
+            if image.get("type") == "external":
+                url = image.get("external", {}).get("url", "")
+            else:
+                url = image.get("file", {}).get("url", "")
+            text = f"![image]({url})"
+        elif block_type == "code":
+            code = block.get("code", {})
+            lang = code.get("language", "")
+            text = "".join([t.get("plain_text", "") for t in code.get("rich_text", [])])
+            text = f"```{lang} {text[:60]}```"
+        else:
+            text = f"[{block_type}]"
+
+        lines.append(f"[{short_id}] [{block_type}] {prefix}{text}")
+        lines.append(f"   id: {block_id}")
+    return "\n".join(lines) if lines else "(empty page)"
 
 
 def create_diary_entry(
@@ -516,6 +710,7 @@ def main():
     read_parser = subparsers.add_parser("read", help="Read a page")
     read_parser.add_argument("page_id", help="Page ID")
     read_parser.add_argument("--json", action="store_true", help="Output raw JSON")
+    read_parser.add_argument("--with-ids", action="store_true", help="Show block IDs (for editing individual blocks)")
     
     # create command
     create_parser = subparsers.add_parser("create", help="Create a page")
@@ -551,7 +746,37 @@ def main():
     append_parser.add_argument("-b", "--bullet", help="Bullet item text")
     append_parser.add_argument("--link", help="URL to make bullet text clickable")
     append_parser.add_argument("--bullets", nargs="+", help="Multiple bullet items")
-    
+
+    # get-block command
+    get_block_parser = subparsers.add_parser("get-block", help="Get a single block")
+    get_block_parser.add_argument("block_id", help="Block ID")
+    get_block_parser.add_argument("--json", action="store_true", help="Output raw JSON")
+
+    # update command
+    # Same-type edits go through PATCH /blocks/{id}.
+    # Type changes are simulated via insert-after + delete (Notion API does not allow type change via PATCH).
+    update_parser = subparsers.add_parser("update", help="Update a block (text, or change type via replace)")
+    update_parser.add_argument("block_id", help="Block ID to update")
+    update_parser.add_argument("-t", "--text", help="New text content")
+    update_parser.add_argument("--link", help="URL to make text clickable")
+    update_parser.add_argument("--checked", dest="checked", action="store_true", help="Mark to_do as checked")
+    update_parser.add_argument("--unchecked", dest="unchecked", action="store_true", help="Mark to_do as unchecked")
+    update_parser.add_argument(
+        "--type",
+        dest="new_type",
+        choices=[
+            "paragraph", "heading_1", "heading_2", "heading_3",
+            "bulleted_list_item", "numbered_list_item", "to_do", "quote",
+        ],
+        help="Change block type (replaces the block at the same position)",
+    )
+    update_parser.add_argument("-l", "--level", type=int, choices=[1, 2, 3], help="Heading level shortcut for --type")
+
+    # delete command
+    delete_parser = subparsers.add_parser("delete", help="Delete a block")
+    delete_parser.add_argument("block_id", help="Block ID to delete")
+    delete_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
+
     args = parser.parse_args()
     
     try:
@@ -566,6 +791,9 @@ def main():
             content = get_page_content(args.page_id)
             if args.json:
                 print(json.dumps(content, indent=2, ensure_ascii=False))
+            elif getattr(args, "with_ids", False):
+                text = blocks_to_text_with_ids(content.get("results", []))
+                print(text)
             else:
                 text = blocks_to_text(content.get("results", []))
                 print(text)
@@ -663,7 +891,56 @@ def main():
                     print(f"   - {item}")
             else:
                 print("❌ No content specified. Use -t, -H, -b, or --bullets")
-        
+
+        elif args.command == "get-block":
+            block = get_block(args.block_id)
+            if args.json:
+                print(json.dumps(block, indent=2, ensure_ascii=False))
+            else:
+                print(blocks_to_text_with_ids([block]))
+
+        elif args.command == "update":
+            checked = None
+            if args.checked:
+                checked = True
+            elif args.unchecked:
+                checked = False
+
+            new_type = args.new_type
+            if args.level is not None:
+                new_type = f"heading_{args.level}"
+
+            if new_type is not None:
+                result = convert_block_type(
+                    args.block_id,
+                    new_type=new_type,
+                    text=args.text,
+                    link=args.link,
+                )
+                inserted = result.get("results", [{}])[0]
+                print(f"✅ Replaced block {args.block_id} with {new_type}")
+                print(f"   new id: {inserted.get('id')}")
+            else:
+                if args.text is None and checked is None:
+                    print("❌ Specify -t/--text, --checked/--unchecked, or --type/-l")
+                    sys.exit(1)
+                result = update_block(
+                    args.block_id,
+                    text=args.text,
+                    link=args.link,
+                    checked=checked,
+                )
+                print(f"✅ Updated block {args.block_id}")
+                print(f"   type: {result.get('type')}")
+
+        elif args.command == "delete":
+            if not args.yes:
+                print(f"⚠️  About to delete block {args.block_id}")
+                print("    Use -y/--yes to confirm")
+                sys.exit(1)
+            result = delete_block(args.block_id)
+            print(f"✅ Deleted block {args.block_id} (archived: {result.get('archived')})")
+
         else:
             parser.print_help()
     
