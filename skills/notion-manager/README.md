@@ -7,7 +7,7 @@ Notion API をCLIから叩くスキル。詳細手順は [`SKILL.md`](./SKILL.md
 - 検索（`search`）— ページ・データベース横断
 - ページ読み込み（`read`、`--with-ids` でブロックID表示）
 - ページ作成（`create`、DB内・通常ページ両対応）
-- ファイルアップロード（`upload`、画像/動画/PDF/Office等）
+- ファイルアップロード（`upload`、画像/動画/音声/PDF/Office/テキスト等。20MB超は自動でmulti-part upload）
 - ページ追記（`append`、見出し/段落/箇条書き/リンク付き）
 - 日記作成（`diary`、画像複数枚＋日付プロパティ、重複画像スキップ）
 - 個別ブロック編集
@@ -37,7 +37,8 @@ uv run python notion_tool.py --help
 
 ## 制限事項
 
-- ファイルサイズ: 20MB以下
+- ファイルサイズ: 20MB以下は single-part、20MB超は自動で multi-part upload（10MBチャンク）
+- 対応MIME: 画像（jpg/png/gif/webp）／動画（mp4/mov/webm/avi/mkv）／音声（mp3/wav/m4a/ogg/flac）／文書（pdf/pptx/docx/xlsx）／テキスト（txt/md/csv/json/html）
 - APIキー未設定だとエラー
 - 接続許可のないページにはアクセス不可
 
@@ -47,4 +48,4 @@ uv run python notion_tool.py --help
 |--------|------|
 | `unauthorized` | APIキーが正しいか／ページに「接続」したか確認 |
 | `object_not_found` | Page ID と接続許可を確認 |
-| アップロード失敗 | 20MB以下／対応形式か確認 |
+| アップロード失敗 | 対応形式か確認（未知の拡張子は `application/octet-stream` でアップされ拒否されることがある） |

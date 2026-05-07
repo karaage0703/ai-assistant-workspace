@@ -214,13 +214,56 @@ def create_page(
     return response.json()
 
 
+CONTENT_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".html": "text/html",
+}
+
+SINGLE_PART_LIMIT = 20 * 1024 * 1024
+MULTI_PART_CHUNK = 10 * 1024 * 1024
+
+
 def upload_file(file_path: str) -> dict:
-    """Upload a file to Notion and return the file_upload object."""
+    """Upload a file to Notion and return the file_upload object.
+
+    Files larger than 20MB are uploaded in multi-part mode (10MB chunks).
+    """
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
-    
-    # Step 1: Create file upload object
+
+    suffix = path.suffix.lower()
+    content_type = CONTENT_TYPES.get(suffix, "application/octet-stream")
+    size = path.stat().st_size
+
+    if size <= SINGLE_PART_LIMIT:
+        return _upload_single_part(path, content_type)
+    return _upload_multi_part(path, content_type, size)
+
+
+def _upload_single_part(path: Path, content_type: str) -> dict:
     response = requests.post(
         f"{BASE_URL}/file_uploads",
         headers=get_headers(),
@@ -228,28 +271,7 @@ def upload_file(file_path: str) -> dict:
     response.raise_for_status()
     upload_obj = response.json()
     file_upload_id = upload_obj["id"]
-    
-    # Step 2: Upload file content
-    # Determine content type
-    suffix = path.suffix.lower()
-    content_types = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".pdf": "application/pdf",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".mp4": "video/mp4",
-        ".mov": "video/quicktime",
-        ".webm": "video/webm",
-        ".avi": "video/x-msvideo",
-        ".mkv": "video/x-matroska",
-    }
-    content_type = content_types.get(suffix, "application/octet-stream")
-    
+
     with open(path, "rb") as f:
         headers = {
             "Authorization": f"Bearer {get_api_key()}",
@@ -263,6 +285,51 @@ def upload_file(file_path: str) -> dict:
         )
     response.raise_for_status()
     return response.json()
+
+
+def _upload_multi_part(path: Path, content_type: str, size: int) -> dict:
+    num_parts = (size + MULTI_PART_CHUNK - 1) // MULTI_PART_CHUNK
+
+    create_resp = requests.post(
+        f"{BASE_URL}/file_uploads",
+        headers=get_headers(),
+        json={
+            "mode": "multi_part",
+            "filename": path.name,
+            "content_type": content_type,
+            "number_of_parts": num_parts,
+        },
+    )
+    create_resp.raise_for_status()
+    upload_obj = create_resp.json()
+    file_upload_id = upload_obj["id"]
+    print(f"   multi-part upload: {num_parts} parts × {MULTI_PART_CHUNK // 1024 // 1024}MB")
+
+    upload_headers = {
+        "Authorization": f"Bearer {get_api_key()}",
+        "Notion-Version": NOTION_VERSION,
+    }
+
+    with open(path, "rb") as f:
+        for part_number in range(1, num_parts + 1):
+            chunk = f.read(MULTI_PART_CHUNK)
+            files = {"file": (path.name, chunk, content_type)}
+            data = {"part_number": str(part_number)}
+            resp = requests.post(
+                f"{BASE_URL}/file_uploads/{file_upload_id}/send",
+                headers=upload_headers,
+                files=files,
+                data=data,
+            )
+            resp.raise_for_status()
+            print(f"   part {part_number}/{num_parts} ({len(chunk) / 1024 / 1024:.1f}MB) ok")
+
+    complete_resp = requests.post(
+        f"{BASE_URL}/file_uploads/{file_upload_id}/complete",
+        headers=get_headers(),
+    )
+    complete_resp.raise_for_status()
+    return complete_resp.json()
 
 
 def add_image_block(page_id: str, file_upload_id: str, caption: str = "") -> dict:
