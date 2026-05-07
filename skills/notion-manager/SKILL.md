@@ -11,7 +11,7 @@ Notion APIを使ってページの検索・閲覧・作成、ファイルアッ�
 
 - APIキー設定が必要（初回のみ）
 - 対象ページには「接続」許可が必要
-- アップロードは20MB以下
+- アップロードは20MB以下は single-part、20MB超は自動で multi-part upload（10MBチャンク）
 
 ## セットアップ（初回のみ）
 
@@ -66,7 +66,11 @@ uv run python notion_tool.py upload photo.jpg <page_id> -c "東京の風景"
 **対応形式：**
 - 画像: jpg, jpeg, png, gif, webp
 - 動画: mp4, mov, webm, avi, mkv
-- その他: pdf, pptx, docx, xlsx
+- 音声: mp3, wav, m4a, ogg, flac
+- 文書: pdf, pptx, docx, xlsx
+- テキスト: txt, md, csv, json, html
+
+**サイズ:** 20MB以下は single-part、20MB超は自動で multi-part upload（10MBチャンクで分割→`/complete` で結合）。
 
 ### 個別ブロックの取得・更新・削除
 
