@@ -813,6 +813,20 @@ def main():
     append_parser.add_argument("-b", "--bullet", help="Bullet item text")
     append_parser.add_argument("--link", help="URL to make bullet text clickable")
     append_parser.add_argument("--bullets", nargs="+", help="Multiple bullet items")
+    append_parser.add_argument(
+        "-F", "--body-file",
+        help=(
+            "Read body from a file (use '-' for stdin). Avoids shell-quoting "
+            "hazards (backticks, $(), special chars) for long-form content. "
+            "Pair with --as to pick block type (default: bullet)."
+        ),
+    )
+    append_parser.add_argument(
+        "--as", dest="body_as",
+        choices=["bullet", "text", "heading"],
+        default="bullet",
+        help="Block type for --body-file (default: bullet)",
+    )
 
     # get-block command
     get_block_parser = subparsers.add_parser("get-block", help="Get a single block")
@@ -917,7 +931,20 @@ def main():
         
         elif args.command == "append":
             added = []
-            
+
+            # Resolve --body-file (safe path for content with backticks/$()/etc.)
+            if args.body_file:
+                if args.body_file == "-":
+                    body_text = sys.stdin.read().rstrip("\n")
+                else:
+                    body_text = Path(args.body_file).read_text(encoding="utf-8").rstrip("\n")
+                if args.body_as == "bullet":
+                    args.bullet = body_text
+                elif args.body_as == "text":
+                    args.text = body_text
+                elif args.body_as == "heading":
+                    args.heading = body_text
+
             # Add heading if specified
             if args.heading:
                 add_heading_block(args.page_id, args.heading, args.level)

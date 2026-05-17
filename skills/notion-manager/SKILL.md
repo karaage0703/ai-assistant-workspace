@@ -125,7 +125,16 @@ uv run python notion_tool.py append <page_id> -b "リンクテキスト" --link 
 
 # 複数の箇条書き
 uv run python notion_tool.py append <page_id> --bullets "項目1" "項目2" "項目3"
+
+# 長文・コマンド名・URL・特殊文字を含む内容（バックティック / $() / "" / \ など）
+# → 必ず --body-file 経由。bash の解釈事故（バックティックがコマンド置換になる等）を防ぐ
+uv run python notion_tool.py append <page_id> -F bullet.txt              # default: bullet
+uv run python notion_tool.py append <page_id> -F text.txt --as text      # paragraph
+uv run python notion_tool.py append <page_id> -F head.txt --as heading   # heading 2
+echo "本文 with \`gh pr edit\` and \$(date)" | uv run python notion_tool.py append <page_id> -F -  # stdin
 ```
+
+⚠️ **`-b "..."` / `-t "..."` インラインでは、内容にバックティックや `$()` を含めない**。bash がダブルクォート内のそれらをコマンド置換として解釈し、bullet/text の該当部分が空文字に化ける。コマンド名・URL・特殊文字を含む長文は `-F/--body-file` 一択。
 
 ### 添付ファイルのダウンロード
 
