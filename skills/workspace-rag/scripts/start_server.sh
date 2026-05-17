@@ -6,7 +6,7 @@ set -euo pipefail
 
 # デフォルトはスクリプトの3階層上（skills/workspace-rag/scripts/ → ワークスペースルート）
 WORKSPACE="${1:-$(cd "$(dirname "$0")/../../.." && pwd)}"
-PORT=7891
+PORT="${WORKSPACE_RAG_PORT:-7890}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="${WORKSPACE}/.workspace_rag/server.pid"
 LOG_FILE="${WORKSPACE}/.workspace_rag/server.log"

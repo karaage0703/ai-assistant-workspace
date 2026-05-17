@@ -8,7 +8,7 @@ set -uo pipefail
 # 環境変数 WORKSPACE_PATH があれば優先、なければスクリプト位置から推定。
 WORKSPACE="${WORKSPACE_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 SCRIPT_DIR="${WORKSPACE}/skills/workspace-rag/scripts"
-PORT="${WORKSPACE_RAG_PORT:-7891}"
+PORT="${WORKSPACE_RAG_PORT:-7890}"
 RUNTIME_DIR="${WORKSPACE}/.workspace_rag"
 PID_FILE="${RUNTIME_DIR}/server.pid"
 LOG_FILE="${RUNTIME_DIR}/server.log"

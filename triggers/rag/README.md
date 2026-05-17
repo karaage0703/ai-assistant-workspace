@@ -40,7 +40,7 @@ LLMから呼ぶ場合は `description` を見て自動的に適切な引数を�
    bash triggers/rag/handler.sh start
    ```
 
-   起動後 `http://127.0.0.1:7891/health` が応答すれば準備完了。
+   起動後 `http://127.0.0.1:7890/health` が応答すれば準備完了。
 
 セットアップが済めば、以降はLLMが必要なときに自動で呼んでくれる。
 
@@ -71,7 +71,7 @@ $ bash triggers/rag/handler.sh "AIエージェントの最新動向"
 | 変数 | デフォルト | 説明 |
 |---|---|---|
 | `WORKSPACE_PATH` | スクリプト位置から推定 | ワークスペースルート（`workspace-rag` のインデックス対象） |
-| `WORKSPACE_RAG_PORT` | `7891` | RAGサーバーのポート |
+| `WORKSPACE_RAG_PORT` | `7890` | RAGサーバーのポート |
 
 xangi 経由で使う場合は xangi の `.env` に書いておく。
 
@@ -82,7 +82,7 @@ xangi 経由で使う場合は xangi の `.env` に書いておく。
 すぐ反映したい場合：
 
 ```bash
-curl -s -X POST "http://127.0.0.1:7891/reindex"
+curl -s -X POST "http://127.0.0.1:7890/reindex"
 ```
 
 ## 検索のコツ
