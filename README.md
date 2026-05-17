@@ -66,41 +66,17 @@ ai-assistant-workspace/
 ├── CLAUDE.md              # → AGENTS.md へのシンボリックリンク
 ├── GEMINI.md              # → AGENTS.md へのシンボリックリンク
 ├── BOOTSTRAP.md           # 初回セットアップ用（セットアップ後に削除されます）
+├── MEMORY.md              # 長期記憶（近況・日常メモ・ワークスペース情報）
 ├── .claude/
 │   └── skills -> ../skills  # Claude Code 用シンボリックリンク
 ├── .agents/
 │   └── skills -> ../skills  # Codex CLI 用シンボリックリンク
 ├── .gemini/
 │   └── skills -> ../skills  # Gemini CLI 用シンボリックリンク
-├── memory/                # 日記・メモの保存先
+├── memory/                # 日記・メモの保存先（YYYYMMDD.md 形式）
 ├── notes/                 # ノート・調査メモの保存先
-├── skills/                # スキル（AIの拡張機能）
-│   ├── arxiv/             # arXiv論文調査スキル
-│   ├── bridge-ideas/      # 知識を繋いでアイデア生成
-│   ├── calendar/          # カレンダースキル
-│   ├── cat-diary/         # 猫日記スキル
-│   ├── code-reviewer/     # マルチAIコードレビュースキル
-│   ├── diagram-generator/ # 図表自動生成スキル
-│   ├── diary/             # 日記スキル
-│   ├── github-repo-analyzer/ # GitHubリポジトリ分析スキル
-│   ├── google-workspace/  # Google Workspace連携スキル
-│   ├── health-advisor/    # 健康管理スキル
-│   ├── marp-slides/       # スライド作成スキル
-│   ├── multi-agent/       # マルチAI協調スキル
-│   ├── note-taking/       # メモ管理スキル
-│   ├── notion-manager/    # Notion連携スキル
-│   ├── podcast/           # ポッドキャストスキル
-│   ├── skill-creator/     # スキル作成スキル
-│   ├── tech-news-curation/# テックニューススキル
-│   ├── transcriber/       # 文字起こしスキル
-│   ├── spontaneous-talk/  # 自発的おしゃべりスキル
-│   ├── workspace-rag/     # ワークスペース全体検索スキル
-│   ├── xangi-settings/    # xangi設定変更スキル
-│   └── youtube-notes/     # YouTubeノートスキル
-└── triggers/              # LLMがFunction Callingで呼び出す軽量ツール
-    ├── rag/                # ワークスペースRAG検索
-    ├── technews/           # 最新テックニュース取得（RSS）
-    └── weather/            # 天気予報取得（wttr.in）
+├── skills/                # スキル（AIの拡張機能） — 一覧は skills/README.md を参照
+└── triggers/              # LLMがFunction Callingで呼び出す軽量ツール — triggers/README.md を参照
 ```
 
 ## 使い方のヒント
