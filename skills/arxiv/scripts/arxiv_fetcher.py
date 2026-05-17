@@ -3,12 +3,48 @@ arXiv論文取得モジュール
 """
 
 import json
+import logging
+import random
+import time
 from datetime import timezone
 from pathlib import Path
 from typing import Optional
 
 import arxiv
+from arxiv import HTTPError, UnexpectedEmptyPageError
 from dateutil import parser as date_parser
+
+logger = logging.getLogger(__name__)
+
+# arxiv API レート制限対策のチューニング値
+#  - delay_seconds: arxiv 公式推奨は 3 秒。混雑時間帯（6:30 JST = 21:30 UTC）で
+#    弾かれにくいよう 5 秒に余裕を持たせる
+#  - num_retries: ライブラリ内部リトライを 3 → 5 に増やす
+#  - page_size: 通常用途では 20 件取れれば十分なので小さくして 1 ページで完結
+ARXIV_CLIENT_KWARGS = dict(page_size=20, delay_seconds=5.0, num_retries=5)
+
+# search/download 全体を包む外側リトライ（指数バックオフ + jitter）
+OUTER_RETRY_DELAYS_SEC = (15, 45, 90)
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+def _build_client() -> arxiv.Client:
+    return arxiv.Client(**ARXIV_CLIENT_KWARGS)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, HTTPError):
+        return exc.status in RETRYABLE_STATUS
+    if isinstance(exc, UnexpectedEmptyPageError):
+        return True
+    # ConnectionError 等のネット系も再試行対象
+    return exc.__class__.__name__ in {"ConnectionError", "ChunkedEncodingError", "ReadTimeout", "Timeout"}
+
+
+def _retry_describe(exc: Exception) -> str:
+    if isinstance(exc, HTTPError):
+        return f"HTTP {exc.status}"
+    return f"{exc.__class__.__name__}: {exc}"
 
 # 有効なarXivカテゴリプレフィックス
 VALID_CATEGORIES = {
@@ -67,8 +103,6 @@ def search_papers(
     sort_by: str = "relevance",
 ) -> dict:
     """arXiv論文を検索"""
-    client = arxiv.Client()
-
     # クエリ構築
     query_parts = [f"({query})"]
 
@@ -98,24 +132,50 @@ def search_papers(
     if date_to:
         date_to_parsed = date_parser.parse(date_to).replace(tzinfo=timezone.utc)
 
-    # 結果処理
-    results = []
-    for paper in client.results(search):
-        if len(results) >= max_results:
-            break
+    attempts: list[str] = []
+    last_exc: Optional[Exception] = None
+    for attempt_idx in range(len(OUTER_RETRY_DELAYS_SEC) + 1):
+        client = _build_client()
+        try:
+            results = []
+            for paper in client.results(search):
+                if len(results) >= max_results:
+                    break
 
-        paper_date = paper.published
-        if not paper_date.tzinfo:
-            paper_date = paper_date.replace(tzinfo=timezone.utc)
+                paper_date = paper.published
+                if not paper_date.tzinfo:
+                    paper_date = paper_date.replace(tzinfo=timezone.utc)
 
-        if date_from_parsed and paper_date < date_from_parsed:
-            continue
-        if date_to_parsed and paper_date > date_to_parsed:
-            continue
+                if date_from_parsed and paper_date < date_from_parsed:
+                    continue
+                if date_to_parsed and paper_date > date_to_parsed:
+                    continue
 
-        results.append(process_paper(paper))
+                results.append(process_paper(paper))
 
-    return {"total_results": len(results), "papers": results}
+            return {"total_results": len(results), "papers": results, "attempts": attempt_idx + 1}
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            attempts.append(_retry_describe(exc))
+            if not _is_retryable(exc) or attempt_idx >= len(OUTER_RETRY_DELAYS_SEC):
+                break
+            sleep_sec = OUTER_RETRY_DELAYS_SEC[attempt_idx] + random.uniform(0, 5)
+            logger.warning(
+                "arxiv search retryable error (try %d/%d): %s — sleeping %.1fs",
+                attempt_idx + 1,
+                len(OUTER_RETRY_DELAYS_SEC) + 1,
+                _retry_describe(exc),
+                sleep_sec,
+            )
+            time.sleep(sleep_sec)
+
+    return {
+        "error": "arxiv API request failed after retries",
+        "detail": _retry_describe(last_exc) if last_exc else "unknown",
+        "attempts": attempts,
+        "retries_exhausted": True,
+        "hint": "2分以上待ってから --date-from を狭めて (例: 過去3日)、または -n を小さくして再実行",
+    }
 
 
 def download_paper(paper_id: str, output_dir: str = "./papers", convert_to_md: bool = True) -> dict:
@@ -135,19 +195,36 @@ def download_paper(paper_id: str, output_dir: str = "./papers", convert_to_md: b
         }
 
     try:
-        client = arxiv.Client()
-        paper = next(client.results(arxiv.Search(id_list=[paper_id])))
+        # 取得は外側リトライでラップ（download_pdf 自体は内部リトライ無し）
+        paper = None
+        last_exc: Optional[Exception] = None
+        for attempt_idx in range(len(OUTER_RETRY_DELAYS_SEC) + 1):
+            client = _build_client()
+            try:
+                paper = next(client.results(arxiv.Search(id_list=[paper_id])))
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if not _is_retryable(exc) or attempt_idx >= len(OUTER_RETRY_DELAYS_SEC):
+                    raise
+                sleep_sec = OUTER_RETRY_DELAYS_SEC[attempt_idx] + random.uniform(0, 5)
+                logger.warning(
+                    "arxiv download metadata retryable error (try %d): %s — sleeping %.1fs",
+                    attempt_idx + 1,
+                    _retry_describe(exc),
+                    sleep_sec,
+                )
+                time.sleep(sleep_sec)
+        assert paper is not None
 
         # PDFダウンロード
         paper.download_pdf(dirpath=str(output_path), filename=pdf_path.name)
 
         if convert_to_md:
             try:
-                from markitdown import MarkItDown
+                import pymupdf4llm
 
-                mid = MarkItDown()
-                result_md = mid.convert(str(pdf_path))
-                markdown = result_md.text_content
+                markdown = pymupdf4llm.to_markdown(str(pdf_path), show_progress=False)
 
                 # メタデータを先頭に追加
                 metadata = f"""---
@@ -187,7 +264,7 @@ url: {paper.entry_id}
             except ImportError:
                 return {
                     "status": "partial",
-                    "message": "PDF downloaded but markitdown not installed for conversion",
+                    "message": "PDF downloaded but pymupdf4llm not installed for conversion",
                     "path": str(pdf_path),
                 }
         else:
