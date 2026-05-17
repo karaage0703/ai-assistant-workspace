@@ -1,264 +1,243 @@
 ---
 name: xs:arxiv
-description: arXiv論文の検索・トレンド発見・詳細分析を行う統合スキル。Pythonスクリプト経由で論文を検索・ダウンロード・読み込み、話題性指標による定量評価でトレンド論文を自動選定。論文検索、トレンド把握、論文分析、研究調査時に使用。
+description: arXiv論文の検索・トレンド発見・詳細分析を行う統合スキル。興味度スコアでユーザーに刺さる論文を自動選定。PDF全文読み込み・Notion蓄積対応。「arXivチェックして」「論文検索」「論文分析して」で使用。
 ---
 
-# arXiv論文調査統合スキル
+# arXiv論文調査スキル
 
-arXiv論文の検索、トレンド発見、詳細分析を統合的に行う。
+## 重要：デフォルトはabstractのみ
 
-## 絶対遵守事項
+- **全文読み込みはデフォルトでやらない。** abstractベースで要約・スコアリングする
+- **全文読み込みをするのは「この論文詳しく」「全文読んで」と明示的に言われた時だけ**
+- 検索コマンドは1回で済ませる（複数クエリを投げない）
+- 中間報告を出す — 検索開始時に「arXiv検索中…」と一言送ってからコマンド実行
 
-- 対話は日本語で行う
+## 興味度スコアの判断基準
 
-## スキル構成
+ユーザーの興味分野は `AGENTS.md` の「ユーザーについて」セクションを参照する。未設定の場合は以下のデフォルトカテゴリで判断：
 
-- `scripts/arxiv_tool.py` - arXiv論文操作CLIスクリプト
-- `scripts/arxiv_fetcher.py` - arXiv論文取得モジュール
-- `scripts/pyproject.toml`, `scripts/uv.lock` - 依存関係定義
+- **最高関心（★★★）:** LLM/プロンプトエンジニアリング、AIエージェント、RAG、Computer Use/ブラウザ操作
+- **高関心（★★☆）:** ロボティクス/Embodied AI、時系列予測、エッジAI/ローカル推論、TTS/音声合成
+- **関心あり（★☆☆）:** 勾配ブースティング、コンピュータビジョン、マルチモーダル、3D生成
+
+ユーザー側で `AGENTS.md` に固有の興味分野（例: 量子情報、創薬AI、強化学習）を書いていれば、そちらを優先する。
 
 ## 実行フロー
 
-### Step 1: ユーザーの要望を確認
+### Step 1: モード判定
 
-以下のモードを判定:
-- **検索モード**: 特定のトピックや論文を探している
-- **トレンドモード**: 最新のトレンド論文を知りたい
-- **分析モード**: 特定の論文を詳しく分析したい
+- **検索モード** — 特定トピックの論文を探す
+- **トレンドモード** — 最新の注目論文を発見する（スケジュール実行はこれ）
+- **分析モード** — 特定論文を深く読む
 
-### Step 2: 論文検索
+### Step 2: 論文検索・トレンド取得
+
+3 経路ある。**用途に応じて使い分ける** (export.arxiv.org API は混雑時間帯で 429/503 を返しがちで非推奨、fallback 扱い)。
+
+#### A. トレンドモード (毎朝の自動実行はこれ)
+
+**arxiv 公式 RSS** から並列取得。レート制限ほぼなし、1〜2 秒で完了。
 
 ```bash
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py search "検索クエリ" \
-  -n 10 \
-  -c cs.AI cs.LG \
-  --date-from 2024-01-01 \
-  -s relevance
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py trending -c cs.AI cs.LG cs.CL cs.CV -d 7 -n 20
 ```
 
-`[SKILL_DIR]`はこのSKILL.mdがあるディレクトリ。
+返り値: `{"total_results": N, "papers": [...], "categories_queried": [...], "categories_failed": [...], "source": "rss"}`
 
-**検索クエリの最適化**：
+#### B. 検索モード (任意クエリでの探索)
+
+**Semantic Scholar API** がデフォルト。abstract / 著者 / 引用数 / OA PDF URL までリッチに取れる。
+
+```bash
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py search "transformer attention" -n 10 [--year-from 2025]
+```
+
+返り値: `{"total_results": N, "papers": [{id, title, authors, abstract, published, citation_count, ...}], "source": "s2"}`
+
+#### C. fallback: export.arxiv.org API (legacy)
+
+旧経路。S2 が応答しない・S2 にない最新論文を狙うときだけ。指数バックオフリトライ済 (15s→45s→90s)。
+
+```bash
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py search "クエリ" -n 10 --source legacy --date-from 2026-05-01 -s date
+```
+
+#### 検索クエリの最適化（B/C 共通）
+
 - 引用句でフレーズ検索: `"multi-agent systems"`
 - OR演算子で関連技術をカバー: `"AI agents" OR "intelligent agents"`
 - フィールド指定検索: `ti:"exact title"`, `au:"author name"`, `abs:"keyword"`
 - 除外検索: `"machine learning" ANDNOT "survey"`
 
-**主要カテゴリ**：
+**主要カテゴリ:** `cs.AI` / `cs.LG` / `cs.CL` / `cs.CV` / `cs.MA` / `cs.RO`
 
-- `cs.AI` - 人工知能
-- `cs.LG` - 機械学習
-- `cs.CL` - 計算言語学（NLP）
-- `cs.CV` - コンピュータビジョン
-- `cs.MA` - マルチエージェントシステム
-- `cs.RO` - ロボティクス
+#### エラー時の挙動
 
-**CLIオプション**：
-```
--n, --max-results  最大結果数（デフォルト: 10）
--c, --categories   カテゴリフィルタ（複数指定可）
---date-from        開始日（YYYY-MM-DD）
---date-to          終了日（YYYY-MM-DD）
--s, --sort-by      ソート方法（relevance/date）
+S2 や legacy が全リトライ尽きると JSON が以下の形:
+
+```json
+{"error": "Semantic Scholar search failed", "detail": "HTTP 429", "retries_exhausted": true, "hint": "..."}
 ```
 
-### Step 3: 論文ダウンロード
+このときは:
+1. **B → C** か **C → B** に経路を切り替えて再実行 (異なる API なので片方ダメでももう片方は通ることが多い)
+2. それでもダメなら諦めて告知「混雑中、明日の定期実行に任せる」
+3. 同セッション内で完結させる
+
+#### arxiv ID から metadata 補完
+
+トレンドで拾った論文の追加情報 (引用数等) が欲しいときは `lookup` で個別取得:
 
 ```bash
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py download 2401.12345 -o ./papers
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py lookup 2401.12345
 ```
 
-PDFをダウンロードし、自動的にMarkdownに変換。
+### Step 3: 興味度スコア付与
 
-**CLIオプション**：
-```
--o, --output-dir  出力ディレクトリ（デフォルト: ./papers）
---pdf-only        PDFのみ（Markdown変換しない）
-```
+abstractを読んでAIが判断する（外部LLM不要）。
 
-### Step 4: ダウンロード済み論文一覧
+| スコア | 意味 | アクション |
+|--------|------|-----------|
+| ★★★ | 必読 | abstract要約 + 詳細コメント |
+| ★★☆ | 読む価値あり | 概要紹介 |
+| ★☆☆ | 参考程度 | タイトルのみ |
+| なし | 関心外 | スキップ |
+
+### Step 4: 論文全文読み込み（リクエスト時のみ）
+
+**デフォルトではabstractのみで要約する。全文読み込みは行わない。**
+**「この論文詳しく」「全文読んで」「分析して」と明示的に言われた時だけ全文を読む。**
 
 ```bash
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py list -o ./papers
-```
-
-### Step 5: 論文読み込み
-
-```bash
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py read 2401.12345 -o ./papers
-```
-
-### Step 6: LaTeXソースから論文を読む（数式が多い論文向け）
-
-`arxiv-to-prompt` ライブラリを使い、論文のLaTeXソースを直接取得する。PDFからの変換では崩れがちな数式を正確に扱える。
-
-```bash
-# LaTeX全文を取得
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex 2401.12345
+# LaTeXソースがあればそちら（数式が正確）
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex {論文ID}
 
 # アブストラクトのみ
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex 2401.12345 --abstract-only
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex {論文ID} --abstract-only
 
 # セクション一覧
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex 2401.12345 --sections
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex {論文ID} --sections
 
 # 特定セクションを取得
-cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex 2401.12345 --section "2.1"
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py latex {論文ID} --section "2.1"
+
+# LaTeXソースが無い論文はPDFダウンロード→Markdown変換
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py download {論文ID} -o /tmp/papers
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py read {論文ID} -o /tmp/papers
 ```
 
 **使い分け:**
-- 数式が少ない論文 → Step 3-5（PDF→Markdown）で十分
-- 数式が多い論文（数学、物理、理論系ML等） → このStep 6でLaTeXソースを使う
-- LaTeXソースが存在しない論文もある（その場合はStep 3-5にフォールバック）
+- 数式が少ない論文 → PDF→Markdown で十分
+- 数式が多い論文（数学、物理、理論系ML等） → LaTeXソースを使う
+- LaTeXソースが存在しない論文もある（その場合はPDFにフォールバック）
 
-## トレンド論文発見モード
+### Step 5: 出力
 
-最新のトレンド論文を話題性指標で評価して発見する場合。
+**論文ごとに `===` で区切って出力する。**
 
-### Phase 1: 基本データ収集
+```
+★★★ **論文タイトル**
+arXiv: {ID} | {著者} | {日付}
+{URL}
 
-1. **arXiv検索実行**
-   ```bash
-   cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py search \
-     '"transformer" OR "LLM" OR "language model"' \
-     -c cs.AI cs.LG cs.CL cs.CV \
-     --date-from [1週間前の日付] \
-     -n 20 \
-     -s date
-   ```
+{abstractベースの要約・分析 3-5文}
 
-2. **基本情報整理**
-   - 論文ID、タイトル、著者、アブストラクト、投稿日を抽出
-   - 明らかに関連性の低い論文を除外
-   - 各論文について著者所属と主要技術分野を事前分析
+**新規性:** {何が新しいか}
+**ユーザー的ポイント:** {なぜそのユーザーに関係あるか}
+===
+★★☆ **論文タイトル**
+arXiv: {ID} | {著者}
+{URL}
 
-### Phase 2: 話題性定量評価
+{abstract要約 1-2文}
+===
+★☆☆ {タイトル} ({ID}) — {一言}
+```
 
-各論文に対して以下の指標で評価（100点満点）：
+### Step 5-2: 注目ピックアップ（必須）
 
-#### 即座評価指標 (40点満点)
-1. **著者評判 (15点)**
-   - Google Scholar h-index/引用数: h-index 50+ (15点), 20-49 (12点), 10-19 (8点), 5-9 (5点)
-   - 著名機関所属: MIT, Stanford, Google, OpenAI等 (+3点)
-   - 企業研究者: ByteDance, Apple, Microsoft等 (+2点)
+論文一覧の後に、特に注目の1-2件を「注目ピックアップ」として再掲する。
+**1論文 = 1投稿**（リプライ・コピペしやすくするため）。複数論文を1メッセージにまとめない。
 
-2. **分野注目度 (15点)**
-   - 最高優先度 (15点): GPT-5評価, 空間知能, LLM安全性
-   - 高優先度 (12点): 4D生成, マルチモーダル, 拡散モデル
-   - 中優先度 (10点): 強化学習, エッジAI, 解釈可能AI
-   - 基準優先度 (8点): コンピュータビジョン, 自然言語処理
+```
+💡 **arXiv注目ピックアップ (1/N)**
 
-3. **タイミング (10点)**
-   - 主要モデルリリース後 (10点)
-   - 主要学会締切前（NeurIPS, ICML等）+5点
-   - 重要技術イベント前（GTC等）+3点
+**論文タイトル**
+arXiv: {ID}
+{URL}
 
-#### 実装指標 (35点満点)
-1. **GitHub実装 (20点)**: WebSearchで検索。公式実装:20点、非公式:10点
-2. **Hugging Face登録 (10点)**: site:huggingface.co で検索
-3. **企業関与 (5点)**: 企業研究者含有
+{なぜ注目か、技術的なポイント、ユーザーとの関連を2-3文で}
+===
+💡 **arXiv注目ピックアップ (2/N)**
 
-#### コミュニティ反応指標 (25点満点)
-1. **SNS言及 (10点)**: Twitter/reddit検索
-2. **研究者ネットワーク (10点)**: 共著者の影響力
-3. **実用性 (5点)**: 産業応用の明確性
+**論文タイトル**
+arXiv: {ID}
+{URL}
 
-### Phase 3: スコアリングと選定
+{解説}
+```
 
-1. 総合スコア計算（最大100点）
-2. 60点以上の論文を候補として選定
-3. 上位5論文を詳細分析対象とする
+### Step 6: Notion蓄積（ユーザーに頼まれた時のみ）
 
-## 論文詳細分析モード
+**自動保存しない。** 「Notionに保存して」「DBに登録して」と言われた時だけ実行する。
 
-特定の論文を深く分析する場合。
+#### 6-1. DBプロパティ登録
 
-### 準備フェーズ
-1. `list` コマンドでダウンロード済みか確認
-2. 未ダウンロードなら `download` コマンドで取得
-3. `read` コマンドで全文を読み込み
-4. `search` コマンドで関連論文も検索
+`notion-manager` スキル経由で Notion DB にエントリ追加（DB IDはユーザーが指定）。
 
-### 分析構造
+プロパティ例: タイトル、著者、arXiv ID、URL、興味度、分野、一言メモ、分析日、全文読了
 
-**1. エグゼクティブサマリー**
-- 2-3文での論文要約
-- 主な貢献・解決している問題・主な手法・結果・結論
+#### 6-2. ページ本文に分析内容を記載
 
-**2. 研究コンテキスト**
-- 研究領域と対象問題
-- 先行研究とその限界
-- 他の論文との比較
+以下のフォーマットに沿って記載：
 
-**3. 手法分析**
-- アプローチのステップバイステップ解説
-- 手法の革新点・理論的基盤・技術的実装
-- 再現に必要な情報
+```markdown
+## エグゼクティブサマリー
+{論文の目的・手法・結果を3-5文で}
 
-**4. 結果分析**
-- 実験セットアップ（データセット、ベンチマーク、評価指標）
-- 主な実験結果とその意義
-- 最先端手法との比較
+## 新規性
+{何が新しいか。既存手法との違い}
 
-**5. 実用的含意**
-- 実装・応用の可能性
-- 利用可能なコード、データセット
+## 手法
+{提案手法の概要。図や数式があれば言及}
 
-**6. 将来の方向性**
-- 限界と今後の研究課題
-- 他のアプローチとの統合可能性
+## 結果
+{主要な実験結果。数値を含める}
 
-## 結果の提示
+## ユーザー的ポイント
+{なぜユーザーに関係あるか。やってるプロジェクト・興味分野との接続点}
 
-分析結果はチャットに提示して完了。**複数論文がある場合は、論文ごとに `===` で区切って出力する**（xangiが別メッセージに分割する）。
+## 次に読む論文
+{関連論文2-3件}
+```
 
-※ notes/への保存が必要な場合は、ユーザーから「メモして」「notesに保存して」と依頼されたときに `note-taking` スキルを使用。
+#### 6-3. 論文PDFを添付
 
-### 必須セクション
-- 基本情報（arXivリンク、著者、投稿日）
-- 概要（一言まとめ）
-- 新規性（何が過去の研究に比べて凄い？）
-- 手法の概要
-- **話題性スコア**: [X/100]（トレンドモードの場合）
-- **話題性根拠**: スコア内訳と根拠（トレンドモードの場合）
-- コメント
-- **次に読む論文**: 関連研究3-5件
-- 関連ノート（Obsidianリンク形式）
+```bash
+# PDFダウンロード（Step 4で未取得の場合）
+cd [SKILL_DIR]/scripts && uv run python arxiv_tool.py download {論文ID} -o /tmp/papers
 
-## 注意点
-
-### ライセンス
-全依存ライブラリが商用利用可能なライセンス：
-- `arxiv` (MIT), `python-dateutil` (Apache-2.0/BSD-3-Clause), `arxiv-to-prompt` (MIT), `markitdown` (MIT)
-
-### 評価の客観性確保
-- 定量的指標を優先し、主観的判断を最小限に
-- スコア根拠を必ず記録
-- 評価基準の一貫性を保持
-
-### 情報収集の制約
-- WebSearch結果がない場合は0点として処理
-- 情報不足の場合は明記
-- 推測ではなく事実ベースで評価
+# notion-managerスキルでPDFをNotionページに添付
+cd [WORKSPACE]/skills/notion-manager && uv run python notion_tool.py upload /tmp/papers/{論文ID}.pdf {ページID} --as-file -c "{論文タイトル} PDF"
+```
 
 ## 使用例
 
-### 論文検索
+- 「arXivチェックして」→ トレンドモード
+- 「RAGの最新論文探して」→ 検索モード
+- 「この論文分析して {URL}」→ 分析モード
+- 「Notionに保存して」→ Step 6を実行
+
+## 完了前チェックリスト
+
 ```
-"attention mechanism" の最新論文を探して
+□ arxiv_tool.py の結果から興味度スコア付き論文一覧を整形した
+□ ★★★/★★☆ 論文ごとに `===` 区切りで本体テキストを出力した（中間報告だけで終わらない）
+□ 論文URL（http://arxiv.org/abs/{ID}）を含めた
+□ 「Notionに保存して」と言われた場合のみ Step 6 を実行した（自動保存しない）
 ```
 
-### トレンド論文発見
-```
-この1週間でAI系のトレンド論文を教えて
-```
+## ライセンス
 
-### 特定論文の詳細分析
-```
-論文 2401.12345 を詳しく分析して
-```
-
-### 分野別検索
-```
-cs.CL カテゴリで RAG に関する論文を10件検索
-```
+全依存ライブラリが商用利用可能なライセンス：
+- `arxiv` (MIT), `python-dateutil` (Apache-2.0/BSD-3-Clause), `arxiv-to-prompt` (MIT), `markitdown` (MIT)

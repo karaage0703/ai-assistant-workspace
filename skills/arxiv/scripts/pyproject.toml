@@ -5,9 +5,11 @@ description = "arXiv paper search and download tool"
 requires-python = ">=3.12"
 dependencies = [
     "arxiv>=2.1.0",
-    "markitdown[all]>=0.1.0",
+    "pymupdf4llm>=0.0.17",
     "python-dateutil>=2.8.2",
     "arxiv-to-prompt>=0.10.0",
+    "feedparser>=6.0.10",
+    "requests>=2.31.0",
 ]
 
 [build-system]

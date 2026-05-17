@@ -8,7 +8,7 @@
 
 | スキル | 説明 | トリガー |
 |--------|------|----------|
-| **workspace-rag** | ワークスペース全体をベクトル検索（SQLite + multilingual-e5、port 7891） | 「ワークスペース検索して」「RAGで探して」 |
+| **workspace-rag** | ワークスペース全体をベクトル検索（SQLite + multilingual-e5、port 7890） | 「ワークスペース検索して」「RAGで探して」 |
 
 ### 思考・分析・レビュー
 
@@ -55,6 +55,7 @@
 |--------|------|----------|
 | **skill-creator** | 新しいスキルを作成する | 「スキルを作って」 |
 | **xangi-settings** | xangiの設定をチャットから動的に変更 | 「設定確認して」「タイムアウト変えて」 |
+| **xangi-onboarding** | xangiの新しいインスタンスをブラウザモードで立ち上げて初心者を伴走 | 「xangi 入れたい」「xangi セットアップ」 |
 | **spontaneous-talk** | AIが自発的に話しかける（確率判定+cron） | 「話しかけて」「spontaneous-talk」 |
 
 ## SKILL.mdの書き方

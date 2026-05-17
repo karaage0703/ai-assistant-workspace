@@ -72,6 +72,7 @@ DEFAULT_EXCLUDE_PATTERNS = [
     r"\.DS_Store$",
     r"Thumbs\.db$",
     r"\.workspace_rag/",
+    r"\.openclaw/",
     r"\.xangi/",
     r"dist/",
     r"build/",
@@ -80,14 +81,36 @@ DEFAULT_EXCLUDE_PATTERNS = [
     r"\.obsidian/",
     r"\.min\.js$",
     r"\.bundle\.js$",
+    r"\.js$",
 ]
 
 # ファイルサイズ上限（バンドル済みJS等を排除）
 DEFAULT_MAX_FILE_SIZE = 100 * 1024  # 100KB
 
+# パス別重み付け（検索スコアに掛ける）
+PATH_WEIGHTS = {
+    "knowledge/": 1.5,
+    "notes/": 1.3,
+    "memory/": 1.2,
+    "information-hub/": 1.0,
+    "skills/": 0.8,
+}
+DEFAULT_PATH_WEIGHT = 1.0
+
+
+def get_path_weight(file_path: str) -> float:
+    """ファイルパスから重みを取得（最長プレフィックス一致）"""
+    best_weight = DEFAULT_PATH_WEIGHT
+    best_len = 0
+    for prefix, weight in PATH_WEIGHTS.items():
+        if prefix in file_path and len(prefix) > best_len:
+            best_weight = weight
+            best_len = len(prefix)
+    return best_weight
+
 
 def get_freshness_score(file_path: str, workspace: str = "") -> float:
-    """ファイルの鮮度スコア（新しいほど高い、最終更新日時ベース）"""
+    """ファイルの鮮度スコア（新しいほど高い）"""
     import time
     try:
         full_path = os.path.join(workspace, file_path) if workspace else file_path
@@ -96,7 +119,6 @@ def get_freshness_score(file_path: str, workspace: str = "") -> float:
         return max(0.5, 1.0 - days_old / 365)
     except Exception:
         return 0.7  # デフォルト
-
 
 # 対象拡張子
 DEFAULT_INCLUDE_EXTENSIONS = {

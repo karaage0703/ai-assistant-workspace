@@ -35,6 +35,8 @@ from arxiv_fetcher import (
     list_papers,
     read_paper,
 )
+from rss_provider import fetch_trending as rss_fetch_trending
+from s2_provider import search as s2_search, get_by_arxiv_id as s2_get_by_arxiv_id
 
 
 def main():
@@ -45,10 +47,25 @@ def main():
     search_parser = subparsers.add_parser("search", help="論文を検索")
     search_parser.add_argument("query", help="検索クエリ")
     search_parser.add_argument("-n", "--max-results", type=int, default=10, help="最大結果数")
-    search_parser.add_argument("--date-from", help="開始日 (YYYY-MM-DD)")
-    search_parser.add_argument("--date-to", help="終了日 (YYYY-MM-DD)")
-    search_parser.add_argument("-c", "--categories", nargs="+", help="カテゴリ (例: cs.AI cs.LG)")
-    search_parser.add_argument("-s", "--sort-by", choices=["relevance", "date"], default="relevance", help="ソート方法")
+    search_parser.add_argument("--date-from", help="開始日 (YYYY-MM-DD) (legacy のみ)")
+    search_parser.add_argument("--date-to", help="終了日 (YYYY-MM-DD) (legacy のみ)")
+    search_parser.add_argument("-c", "--categories", nargs="+", help="カテゴリ (例: cs.AI cs.LG) (legacy のみ)")
+    search_parser.add_argument("-s", "--sort-by", choices=["relevance", "date"], default="relevance", help="ソート方法 (legacy のみ)")
+    search_parser.add_argument("--source", choices=["legacy", "s2"], default="s2",
+                                help="検索バックエンド: s2=Semantic Scholar (推奨)、legacy=旧 export.arxiv.org API")
+    search_parser.add_argument("--year-from", type=int, help="開始年 (s2 のみ)")
+
+    # trending コマンド (新規: RSS による cron 用トレンド取得)
+    trending_parser = subparsers.add_parser("trending", help="カテゴリ別 RSS から過去 N 日の新着を取得")
+    trending_parser.add_argument("-c", "--categories", nargs="+",
+                                  default=["cs.AI", "cs.LG", "cs.CL", "cs.CV"],
+                                  help="カテゴリ (デフォルト: cs.AI cs.LG cs.CL cs.CV)")
+    trending_parser.add_argument("-d", "--days", type=int, default=7, help="過去何日分 (デフォルト: 7)")
+    trending_parser.add_argument("-n", "--max-results", type=int, default=20, help="最大件数")
+
+    # lookup コマンド (新規: S2 で arxiv ID から metadata 取得)
+    lookup_parser = subparsers.add_parser("lookup", help="arxiv ID から metadata 取得 (Semantic Scholar)")
+    lookup_parser.add_argument("paper_id", help="arXiv 論文 ID (例: 2401.12345)")
 
     # download コマンド
     download_parser = subparsers.add_parser("download", help="論文をダウンロード")
@@ -75,14 +92,29 @@ def main():
     args = parser.parse_args()
 
     if args.command == "search":
-        result = search_papers(
-            query=args.query,
-            max_results=args.max_results,
-            date_from=args.date_from,
-            date_to=args.date_to,
+        if args.source == "s2":
+            result = s2_search(
+                query=args.query,
+                max_results=args.max_results,
+                year_from=args.year_from,
+            )
+        else:
+            result = search_papers(
+                query=args.query,
+                max_results=args.max_results,
+                date_from=args.date_from,
+                date_to=args.date_to,
+                categories=args.categories,
+                sort_by=args.sort_by,
+            )
+    elif args.command == "trending":
+        result = rss_fetch_trending(
             categories=args.categories,
-            sort_by=args.sort_by,
+            days=args.days,
+            max_results=args.max_results,
         )
+    elif args.command == "lookup":
+        result = s2_get_by_arxiv_id(args.paper_id)
     elif args.command == "download":
         result = download_paper(
             paper_id=args.paper_id,
