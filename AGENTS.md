@@ -110,6 +110,20 @@
 
 ---
 
+## 開発の進め方
+
+ソフトウェア開発タスク（実装・修正・PR作成・レビュー反映・CI修正）に入るときは、まず `skills/dev-workflow/SKILL.md` を読む。
+
+基本方針:
+- 作業前に `git fetch` / `git status` でリポジトリ状態を確認する
+- 既存の未コミット変更を勝手に戻さない
+- 共有・公開リポジトリでは PR フローを使う
+- コミット前に `git diff --cached` を確認する
+- PR 本文には変更点と検証結果を書く
+- 実装・PR作成・マージなどの節目は `memory/YYYYMMDD.md` または `MEMORY.md` に記録する
+
+---
+
 ## トリガー
 
 `triggers/` には LLM が Function Calling で呼び出す軽量ツールがあります。一覧と仕組みは `triggers/README.md` を参照。
