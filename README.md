@@ -6,7 +6,7 @@ AIコーディングツール（Claude Code / Codex CLI / Gemini CLI）をパー
 
 [xangi](https://github.com/karaage0703/xangi)（Discord常駐型AIアシスタント）の推奨ワークスペースです。xangiと組み合わせることで、チャットからスキルを呼び出して日常タスクを自動化できます。
 
-背景にある考え方は、記事「[生活に溶け込むAI](https://karaage.hatenadiary.jp/entry/2026/02/25/073000)」でも紹介しています。
+背景にある考え方は、技術同人誌「[生活に溶け込むAI](https://karaage0703.booth.pm/items/8027277)」で紹介しています。書籍の紹介記事は「[技術同人誌『生活に溶け込むAI — AIエージェントで作る、自分だけのアシスタント』を販売しました](https://karaage.hatenadiary.jp/entry/2026/02/25/073000)」を参照してください。
 
 ## できること
 
