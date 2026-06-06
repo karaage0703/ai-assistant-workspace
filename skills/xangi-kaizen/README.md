@@ -9,7 +9,7 @@ AIアシスタント上で起きた事象（再投稿、cron が回らない、�
 - 発生した事象の調査・根本原因分析（なぜを最低3回掘る）
 - 過去事例（KEDB = Known Error Database）を引いて、同パターンなら対策を再利用
 - 横展開検索（同じパターンが他の場所で起きていないか網羅）
-- 修正実装 + 教訓を AGENTS.md / MEMORY.md に集約
+- 修正実装 + 教訓を AGENTS.md / MEMORY.md / knowledge に集約
 
 ## 使い方
 
@@ -65,6 +65,6 @@ LLM をエージェントとして使った Root Cause Analysis（RCA）の研�
 - 初回運用ではノートゼロが普通。1件ずつ積み上がる
 - ファイル名は `YYYYMMDD_xangi-kaizen_<事象タイトル>.md`、フロントマターに `tags: [xangi-kaizen, incident, <対象スキル名>]` を必ず付ける
 
-## オリジナル / 参考
+## 派生と運用
 
-karaage の個人ワークスペース [borot](https://github.com/karaage0703/borot) で1ヶ月運用したスキル `xangi-kaizen` を、ai-assistant-workspace 向けに汎用化したものです。実運用での改善事例（content-digest 再投稿、borot master 誤コミット、pm2 restart rejected 誤解、Edit ツール並行上書き等）は borot の `notes/*_xangi-kaizen_*.md` を参照してください。
+このスキルは、実運用で積み上げた調査手順を ai-assistant-workspace 向けに汎用化したものです。個別環境のログやプライベートリポジトリには依存しない形で、公開テンプレートとして再利用できる手順だけを残しています。
