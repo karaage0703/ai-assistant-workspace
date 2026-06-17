@@ -85,6 +85,7 @@ description: 何をするスキルか。「呼び出しフレーズ」で使用�
 ```
 .claude/skills → ../skills   # Claude Code 用
 .agents/skills → ../skills   # Codex CLI 用
+.grok/skills → ../skills     # Grok CLI 用
 ```
 
 スキルを追加する時は `skills/` にフォルダを作るだけで、全ツールから自動的に利用できます。

@@ -72,6 +72,8 @@ ai-assistant-workspace/
 │   └── skills -> ../skills  # Claude Code 用シンボリックリンク
 ├── .agents/
 │   └── skills -> ../skills  # Codex CLI 用シンボリックリンク
+├── .grok/
+│   └── skills -> ../skills  # Grok CLI 用シンボリックリンク
 ├── memory/                # 日記・メモの保存先（YYYYMMDD.md 形式）
 ├── notes/                 # ノート・調査メモの保存先
 ├── skills/                # スキル（AIの拡張機能） — 一覧は skills/README.md を参照
