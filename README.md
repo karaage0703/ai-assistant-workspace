@@ -2,7 +2,7 @@
 
 あなた専用のAIアシスタント・ワークスペースです。
 
-AIコーディングツール（Claude Code / Codex CLI / Gemini CLI）をパーソナルアシスタントとして活用するためのスターターキットです。初回起動時に対話形式であなた専用のアシスタントが作られます。
+AIコーディングツール（Claude Code / Codex CLI）をパーソナルアシスタントとして活用するためのスターターキットです。初回起動時に対話形式であなた専用のアシスタントが作られます。
 
 [xangi](https://github.com/karaage0703/xangi)（Discord常駐型AIアシスタント）の推奨ワークスペースです。xangiと組み合わせることで、チャットからスキルを呼び出して日常タスクを自動化できます。
 
@@ -20,13 +20,13 @@ AIコーディングツール（Claude Code / Codex CLI / Gemini CLI）をパー
 - **プレゼン作成** — マークダウンからスライドを生成
 - **テックニュース** — 最新のAI・技術ニュースを収集・紹介
 - **arXiv論文調査** — 論文検索・トレンド発見・詳細分析を統合的に実行
-- **コードレビュー** — マルチAI（Claude/Codex/Gemini）でPRを体系的にレビュー
+- **コードレビュー** — マルチAI（Claude/Codex）でPRを体系的にレビュー
 - **開発ワークフロー** — ブランチ運用・PR作成・検証・記録を一気通貫で管理
 - **なぜなぜ分析（xangi-kaizen）** — 事象の根本原因分析・横展開・再発防止を5フェーズで実行
 - **GitHubリポジトリ分析** — リポジトリの構造・技術スタックを分析
 - **ワークスペース検索** — ファイルをベクトル検索で横断検索（workspace-RAG）
 - **アイデア発想** — ワークスペース内の遠い知識をつないで企画を出す（bridge-ideas）
-- **マルチAI協調** — Claude / Codex / Gemini で並行調査・レビュー
+- **マルチAI協調** — Claude / Codex で並行調査・レビュー
 - **図表生成** — フローチャート・アーキテクチャ図を自動生成（Pillow / Mermaid / PlantUML）
 - **Google Workspace** — Gmail・Google Drive・Google Calendarを操作（gogcli）
 - **カレンダー** — ICSカレンダー（Googleカレンダー等）の予定を確認
@@ -40,7 +40,7 @@ AIコーディングツール（Claude Code / Codex CLI / Gemini CLI）をパー
 
 ### 必要なもの
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)、[Codex CLI](https://github.com/openai/codex)、[Gemini CLI](https://github.com/google-gemini/gemini-cli) のいずれか
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)、[Codex CLI](https://github.com/openai/codex) のいずれか
 - Discordで使う場合: [xangi](https://github.com/karaage0703/xangi)
 
 ### セットアップ手順
@@ -53,7 +53,6 @@ cd ai-assistant-workspace
 # 2. AIツールを起動（いずれか）
 claude          # Claude Code の場合
 codex           # Codex CLI の場合
-gemini          # Gemini CLI の場合
 
 # 3. 自動セットアップが始まります
 # AIがあなたに質問して、あなた専用のアシスタントを作ります
@@ -67,15 +66,12 @@ Claude Code の場合、`.claude/skills` → `skills/` のシンボリックリ�
 ai-assistant-workspace/
 ├── AGENTS.md              # 設定ファイル（全ツール共通）
 ├── CLAUDE.md              # → AGENTS.md へのシンボリックリンク
-├── GEMINI.md              # → AGENTS.md へのシンボリックリンク
 ├── BOOTSTRAP.md           # 初回セットアップ用（セットアップ後に削除されます）
 ├── MEMORY.md              # 長期記憶（近況・日常メモ・ワークスペース情報）
 ├── .claude/
 │   └── skills -> ../skills  # Claude Code 用シンボリックリンク
 ├── .agents/
 │   └── skills -> ../skills  # Codex CLI 用シンボリックリンク
-├── .gemini/
-│   └── skills -> ../skills  # Gemini CLI 用シンボリックリンク
 ├── memory/                # 日記・メモの保存先（YYYYMMDD.md 形式）
 ├── notes/                 # ノート・調査メモの保存先
 ├── skills/                # スキル（AIの拡張機能） — 一覧は skills/README.md を参照

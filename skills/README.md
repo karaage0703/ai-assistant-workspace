@@ -8,56 +8,56 @@
 
 | スキル | 説明 | トリガー |
 |--------|------|----------|
-| **workspace-rag** | ワークスペース全体をベクトル検索（SQLite + multilingual-e5、port 7890） | 「ワークスペース検索して」「RAGで探して」 |
+| **xs-workspace-rag** | ワークスペース全体をベクトル検索（SQLite + multilingual-e5、port 7890） | 「ワークスペース検索して」「RAGで探して」 |
 
 ### 思考・分析・レビュー
 
 | スキル | 説明 | トリガー |
 |--------|------|----------|
-| **bridge-ideas** | ワークスペース内の遠い知識・資産をつないでアイデア生成 | 「アイデア出して」「知識をつないで」 |
-| **multi-agent** | 複数のAIエージェント（Claude/Codex/Gemini）で協調分析・レビュー | 「みんなで考えて」「複数のAIでレビュー」 |
-| **code-reviewer** | マルチAIでPRをレビュー | 「PRレビューして」「PR#123をチェック」 |
-| **dev-workflow** | 開発タスクの立ち上げ・ブランチ運用・PR作成・検証・記録 | 「実装して」「PR作って」「コードを書く」 |
-| **arxiv** | arXiv論文の検索・トレンド発見・詳細分析 | 「論文探して」「arxivで調べて」 |
-| **github-repo-analyzer** | GitHubリポジトリの構造・技術スタック分析 | 「リポジトリ分析して」「このリポジトリ見て」 |
-| **xangi-kaizen** | なぜなぜ分析・根本原因分析を5フェーズで実行 | 「調査して」「原因調べて」「なぜなぜ分析」「再発防止」 |
+| **xs-bridge-ideas** | ワークスペース内の遠い知識・資産をつないでアイデア生成 | 「アイデア出して」「知識をつないで」 |
+| **xs-multi-agent** | 複数のAIエージェント（Claude/Codex）で協調分析・レビュー | 「みんなで考えて」「複数のAIでレビュー」 |
+| **xs-code-reviewer** | マルチAIでPRをレビュー | 「PRレビューして」「PR#123をチェック」 |
+| **xs-dev-workflow** | 開発タスクの立ち上げ・ブランチ運用・PR作成・検証・記録 | 「実装して」「PR作って」「コードを書く」 |
+| **xs-arxiv** | arXiv論文の検索・トレンド発見・詳細分析 | 「論文探して」「arxivで調べて」 |
+| **xs-github-repo-analyzer** | GitHubリポジトリの構造・技術スタック分析 | 「リポジトリ分析して」「このリポジトリ見て」 |
+| **xs-xangi-kaizen** | なぜなぜ分析・根本原因分析を5フェーズで実行 | 「調査して」「原因調べて」「なぜなぜ分析」「再発防止」 |
 
 ### 記録・日記・メモ
 
 | スキル | 説明 | トリガー |
 |--------|------|----------|
-| **note-taking** | 調査結果・アイデア・会議メモを保存 | 「メモして」「ノートにまとめて」 |
-| **diary** | 日次・週次・月次の振り返りとNotion連携 | 「日記書いて」「日記の時間」 |
-| **cat-diary** | 猫の写真を自動判定して猫日記を作成 | 「猫日記」「猫の写真を記録して」 |
-| **health-advisor** | 食事・運動の記録と健康管理アドバイス | 「健康チェック」「食事記録して」 |
+| **xs-note-taking** | 調査結果・アイデア・会議メモを保存 | 「メモして」「ノートにまとめて」 |
+| **xs-diary** | 日次・週次・月次の振り返りとNotion連携 | 「日記書いて」「日記の時間」 |
+| **xs-cat-diary** | 猫の写真を自動判定して猫日記を作成 | 「猫日記」「猫の写真を記録して」 |
+| **xs-health-advisor** | 食事・運動の記録と健康管理アドバイス | 「健康チェック」「食事記録して」 |
 
 ### コンテンツ生成
 
 | スキル | 説明 | トリガー |
 |--------|------|----------|
-| **marp-slides** | Marpでプレゼンスライドを作成 | 「スライド作って」「プレゼン資料を作って」 |
-| **diagram-generator** | 図表自動生成（Pillow画像/Mermaid/PlantUML） | 「図にして」「アーキテクチャ図描いて」 |
-| **transcriber** | 音声ファイルをWhisperで文字起こし | 「文字起こしして」「音声をテキストに」 |
-| **podcast** | ポッドキャストの取得・文字起こし・まとめ | 「ポッドキャストまとめて」 |
-| **youtube-notes** | YouTube動画の字幕からノートを作成 | 「YouTube動画をまとめて」 |
-| **tech-news-curation** | AI・技術系の最新ニュースを取得 | 「テックニュース」「最新のニュース教えて」 |
+| **xs-marp-slides** | Marpでプレゼンスライドを作成 | 「スライド作って」「プレゼン資料を作って」 |
+| **xs-diagram-generator** | 図表自動生成（Pillow画像/Mermaid/PlantUML） | 「図にして」「アーキテクチャ図描いて」 |
+| **xs-transcriber** | 音声ファイルをWhisperで文字起こし | 「文字起こしして」「音声をテキストに」 |
+| **xs-podcast** | ポッドキャストの取得・文字起こし・まとめ | 「ポッドキャストまとめて」 |
+| **xs-youtube-notes** | YouTube動画の字幕からノートを作成 | 「YouTube動画をまとめて」 |
+| **xs-tech-news-curation** | AI・技術系の最新ニュースを取得 | 「テックニュース」「最新のニュース教えて」 |
 
 ### 外部連携
 
 | スキル | 説明 | トリガー |
 |--------|------|----------|
-| **calendar** | ICSカレンダー予定確認＋画像からの予定追加 | 「今日の予定」「明日の予定」 |
-| **google-workspace** | gogcli経由でGmail・Drive・Calendar操作 | 「メールチェック」「Driveのファイル」 |
-| **notion-manager** | Notion APIでページ検索・作成・ファイルアップロード | 「Notionで検索して」「Notionにページ作って」 |
+| **xs-calendar** | ICSカレンダー予定確認＋画像からの予定追加 | 「今日の予定」「明日の予定」 |
+| **xs-google-workspace** | gogcli経由でGmail・Drive・Calendar操作 | 「メールチェック」「Driveのファイル」 |
+| **xs-notion-manager** | Notion APIでページ検索・作成・ファイルアップロード | 「Notionで検索して」「Notionにページ作って」 |
 
 ### システム・メタ
 
 | スキル | 説明 | トリガー |
 |--------|------|----------|
-| **skill-creator** | 新しいスキルを作成する | 「スキルを作って」 |
-| **xangi-settings** | xangiの設定をチャットから動的に変更 | 「設定確認して」「タイムアウト変えて」 |
-| **xangi-onboarding** | xangiの新しいインスタンスをブラウザモードで立ち上げて初心者を伴走 | 「xangi 入れたい」「xangi セットアップ」 |
-| **spontaneous-talk** | AIが自発的に話しかける（確率判定+cron） | 「話しかけて」「spontaneous-talk」 |
+| **xs-skill-creator** | 新しいスキルを作成する | 「スキルを作って」 |
+| **xs-xangi-settings** | xangiの設定をチャットから動的に変更 | 「設定確認して」「タイムアウト変えて」 |
+| **xs-xangi-onboarding** | xangiの新しいインスタンスをブラウザモードで立ち上げて初心者を伴走 | 「xangi 入れたい」「xangi セットアップ」 |
+| **xs-spontaneous-talk** | AIが自発的に話しかける（確率判定+cron） | 「話しかけて」「spontaneous-talk」 |
 
 ## SKILL.mdの書き方
 
@@ -85,7 +85,6 @@ description: 何をするスキルか。「呼び出しフレーズ」で使用�
 ```
 .claude/skills → ../skills   # Claude Code 用
 .agents/skills → ../skills   # Codex CLI 用
-.gemini/skills → ../skills   # Gemini CLI 用
 ```
 
 スキルを追加する時は `skills/` にフォルダを作るだけで、全ツールから自動的に利用できます。
