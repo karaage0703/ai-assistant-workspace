@@ -126,6 +126,6 @@ xangi-cmd system_restart
 
 | トリガー | 説明 | LLMが呼ぶ場面の例 |
 |---|---|---|
-| [rag](rag/README.md) | ワークスペースRAGで検索（[`workspace-rag`](../skills/workspace-rag/) 連携） | 「過去のメモから○○探して」 |
+| [rag](rag/README.md) | ワークスペースRAGで検索（[`workspace-rag`](../skills/xs-workspace-rag/) 連携） | 「過去のメモから○○探して」 |
 | [technews](technews/README.md) | 最新テックニュース取得（RSS） | 「テックニュース教えて」 |
 | [weather](weather/README.md) | 天気予報取得（wttr.in） | 「名古屋の天気は？」 |

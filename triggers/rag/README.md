@@ -2,7 +2,7 @@
 
 ワークスペース内のすべてのファイル（`memory/`, `notes/`, `skills/`, ドキュメント等）をベクトル検索する `rag` トリガー。
 
-`skills/workspace-rag/` の常駐サーバー（HTTP API）に問い合わせる薄いラッパー。LLMが Function Calling で呼び出すか、シェルから直接 `bash triggers/rag/handler.sh ...` で叩く。
+`skills/xs-workspace-rag/` の常駐サーバー（HTTP API）に問い合わせる薄いラッパー。LLMが Function Calling で呼び出すか、シェルから直接 `bash triggers/rag/handler.sh ...` で叩く。
 
 ## サブコマンド
 
@@ -22,7 +22,7 @@ LLMから呼ぶ場合は `description` を見て自動的に適切な引数を�
 1. **依存パッケージのインストール** — `uv` が必要。
 
    ```bash
-   cd skills/workspace-rag/scripts
+   cd skills/xs-workspace-rag/scripts
    uv sync
    ```
 
@@ -94,7 +94,7 @@ curl -s -X POST "http://127.0.0.1:7890/reindex"
 
 ## 関連スキル
 
-- [`skills/workspace-rag/`](../../skills/workspace-rag/) — このトリガーの本体。CLI操作やAPI仕様の詳細はこちら
+- [`skills/xs-workspace-rag/`](../../skills/xs-workspace-rag/) — このトリガーの本体。CLI操作やAPI仕様の詳細はこちら
 
 ## トラブルシューティング
 
@@ -109,7 +109,7 @@ curl -s -X POST "http://127.0.0.1:7890/reindex"
 ### 検索結果が出てこない
 
 - インデックスが空 → `bash triggers/rag/handler.sh index` を実行
-- ファイルが除外パターンにマッチ → `skills/workspace-rag/scripts/workspace_rag.py` の `DEFAULT_EXCLUDE_PATTERNS` を確認
+- ファイルが除外パターンにマッチ → `skills/xs-workspace-rag/scripts/workspace_rag.py` の `DEFAULT_EXCLUDE_PATTERNS` を確認
 - ファイルサイズが上限超 → デフォルト100KB上限。`--max-file-size 0` で無制限化可能
 
 ### ポート競合

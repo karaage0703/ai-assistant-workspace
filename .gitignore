@@ -22,8 +22,8 @@ __pycache__/
 node_modules/
 
 # カレンダー（ICS URLは非公開情報）
-skills/calendar/calendar_urls.json
-skills/calendar/manual_events.json
+skills/xs-calendar/calendar_urls.json
+skills/xs-calendar/manual_events.json
 
 # ワークスペースRAG
 *.db

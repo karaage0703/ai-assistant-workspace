@@ -35,7 +35,7 @@ $ bash triggers/technews/handler.sh
 curl -s "https://your.feed.example/rss.xml" 2>/dev/null | ...
 ```
 
-複数フィードを横断したい・要約も付けたい場合は、トリガーよりも [`skills/tech-news-curation/`](../../skills/tech-news-curation/) スキルの方が向いている（AIが内容を見て選別・解説してくれる）。
+複数フィードを横断したい・要約も付けたい場合は、トリガーよりも [`skills/xs-tech-news-curation/`](../../skills/xs-tech-news-curation/) スキルの方が向いている（AIが内容を見て選別・解説してくれる）。
 
 ## 違い: trigger vs. skill
 

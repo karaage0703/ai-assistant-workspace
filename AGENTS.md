@@ -100,19 +100,19 @@
 
 ## ノート
 
-調査結果やまとめは `[NOTES_DIR]`（`./notes/`）に保存する。詳しくは `skills/note-taking/SKILL.md` を参照。
+調査結果やまとめは `[NOTES_DIR]`（`./notes/`）に保存する。詳しくは `skills/xs-note-taking/SKILL.md` を参照。
 
 ---
 
 ## スキル
 
-スキルは `skills/` ディレクトリに一元管理。一覧と各スキルの説明・トリガーフレーズは `skills/README.md` を参照。新規作成は `skills/skill-creator/SKILL.md` を使う。
+スキルは `skills/` ディレクトリに一元管理。一覧と各スキルの説明・トリガーフレーズは `skills/README.md` を参照。新規作成は `skills/xs-skill-creator/SKILL.md` を使う。
 
 ---
 
 ## 開発の進め方
 
-ソフトウェア開発タスク（実装・修正・PR作成・レビュー反映・CI修正）に入るときは、まず `skills/dev-workflow/SKILL.md` を読む。
+ソフトウェア開発タスク（実装・修正・PR作成・レビュー反映・CI修正）に入るときは、まず `skills/xs-dev-workflow/SKILL.md` を読む。
 
 基本方針:
 - 作業前に `git fetch` / `git status` でリポジトリ状態を確認する
