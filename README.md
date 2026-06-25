@@ -6,6 +6,8 @@ AIコーディングツール（Claude Code / Codex CLI）をパーソナルア�
 
 [xangi](https://github.com/karaage0703/xangi)（Discord常駐型AIアシスタント）の推奨ワークスペースです。xangiと組み合わせることで、チャットからスキルを呼び出して日常タスクを自動化できます。
 
+このワークスペースは、単なるプロンプト集ではありません。`AGENTS.md`、`MEMORY.md`、`memory/`、`notes/`、`skills/`、`triggers/` を組み合わせて、AIアシスタントがセッションをまたいで文脈を読み、必要なスキルを選び、作業結果をファイルに残すための実運用テンプレートです。
+
 背景にある考え方は、技術同人誌「[生活に溶け込むAI](https://karaage0703.booth.pm/items/8027277)」で紹介しています。書籍の紹介記事は「[技術同人誌『生活に溶け込むAI — AIエージェントで作る、自分だけのアシスタント』を販売しました](https://karaage.hatenadiary.jp/entry/2026/02/25/073000)」を参照してください。
 
 ## できること
@@ -36,11 +38,36 @@ AIコーディングツール（Claude Code / Codex CLI）をパーソナルア�
 - **トリガー（軽量ツール）** — LLMがFunction Callingで呼ぶ簡易ツール（天気・ニュース・RAG検索など）
 - **スキル作成** — 自分だけのカスタムスキルを作る
 
+## 基本コンセプト
+
+### ファイルを記憶にする
+
+AIコーディングツールのセッションは毎回まっさらな状態で始まります。このワークスペースでは、次のファイルを読み書きすることで継続性を持たせます。
+
+- `AGENTS.md`: アシスタントの行動ルール、手順、安全ルール
+- `MEMORY.md`: 長期的に残したい近況・プロジェクト・好み
+- `memory/YYYYMMDD.md`: その日の作業ログ、日常ログ、判断メモ
+- `notes/`: 後から読み返す調査結果、企画、レビュー、日記
+
+重要なのは「覚えておく」ではなく「ファイルに書く」ことです。ファイルに残せば、Claude Code / Codex CLI / Grok CLI / xangi など複数の入口から同じ文脈を再利用できます。
+
+### スキルで行動を増やす
+
+`skills/` に `SKILL.md` を置くと、AIアシスタントは依頼内容に応じて必要な手順を読み込みます。日記、健康管理、RAG検索、コードレビュー、開発ワークフローなどをスキルとして分離することで、プロンプトを巨大化させずに機能を増やせます。
+
+### RAGで過去の文脈を探す
+
+`xs-workspace-rag` は `memory/`、`notes/`、`knowledge` 相当のファイルを検索するための常駐RAGです。「前に話したこと」「過去の調査」「ローカルの実測値」を探す時に使います。Web検索や外部APIの結果だけで判断せず、ローカルの記録も照合する運用を推奨します。
+
+### 長時間処理は復帰導線を作る
+
+Docker build、RAGインデックス、動画処理、外部AIの並列レビューなど時間がかかる処理は、`nohup` でバックグラウンド実行し、ログファイルを残します。xangiで使う場合は、完了時に `xangi-cmd trigger` で自分を起こす導線を付けると、処理完了後に結果確認まで自動化できます。
+
 ## クイックスタート
 
 ### 必要なもの
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)、[Codex CLI](https://github.com/openai/codex) のいずれか
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)、[Codex CLI](https://github.com/openai/codex)、Grok CLI などのAIコーディングツール
 - Discordで使う場合: [xangi](https://github.com/karaage0703/xangi)
 
 ### セットアップ手順
@@ -59,6 +86,16 @@ codex           # Codex CLI の場合
 ```
 
 Claude Code の場合、`.claude/skills` → `skills/` のシンボリックリンクがリポジトリに含まれているため、クローンするだけでスキルが使えます。
+
+### xangiで使う場合
+
+xangiの `WORKSPACE_PATH` にこのリポジトリを指定すると、Discord / Slack / LINE / Web Chat から同じワークスペースを使えます。
+
+```bash
+WORKSPACE_PATH=/path/to/ai-assistant-workspace
+```
+
+xangi側の設定・起動方法は [xangi](https://github.com/karaage0703/xangi) の README を参照してください。Dockerで動かす場合も、ワークスペースはコンテナ内にマウントして使います。
 
 ## ディレクトリ構成
 
@@ -198,9 +235,22 @@ ai-assistant-workspace/
 
 `AGENTS.md` の「自分について」セクションを編集すると、AIの話し方や性格を変えられます。
 
+### 記憶の残し方を変える
+
+- 長期的に残す情報は `MEMORY.md`
+- 日々の生ログは `memory/YYYYMMDD.md`
+- 調査結果や記事化したい内容は `notes/`
+- 手順や行動ルールは `AGENTS.md`
+
+この分け方を守ると、後からRAG検索した時に「ルール」「長期記憶」「作業ログ」「成果物」が混ざりにくくなります。
+
 ### スキルを追加する
 
 `skills/` ディレクトリにフォルダを作り、`SKILL.md` を書くだけで新しいスキルを追加できます。詳しくは `skills/README.md` を参照してください。
+
+### 自分用に安全ルールを足す
+
+メール送信、SNS投稿、公開リポジトリへのpush、GitHub Release作成など、外部に影響する操作は `AGENTS.md` に確認ルールを書いておくことを推奨します。内部ファイルの読み取り・整理は大胆に、外部への送信や公開操作は慎重に、という分離が運用しやすいです。
 
 ## ライセンス
 
