@@ -14,6 +14,7 @@ description: ソフトウェア開発タスクを進めるときの基本フロ�
 3. **共有リポジトリは PR フロー** — 公開・共有リポジトリでは小さな変更でもブランチを切る
 4. **検証を書く** — PR 本文に何を確認したかを残す
 5. **節目を記録する** — 長く続く作業は `memory/YYYYMMDD.md` や `MEMORY.md` に状態を残す
+6. **公開操作は確認する** — push、PR作成、merge、release など公開リポジトリに影響する操作は、対象と操作内容を明示してユーザーのOKを取る
 
 ## Step 1: 作業種別を決める
 
@@ -87,6 +88,18 @@ git commit -m "<summary>"
 `git add .` や `git add -A` は、無関係な変更を巻き込みやすいので避ける。
 
 ## Step 7: PR を作る
+
+公開リポジトリで `git push` や `gh pr create` を行う前に、次のように対象操作を明示してユーザーのOKを取る。
+
+```text
+これから public repo <owner>/<repo> に以下を実行します。
+- branch <branch> を push
+- PR を作成
+
+OK？
+```
+
+OKが出たら実行する。
 
 ```bash
 git push -u origin <branch>
