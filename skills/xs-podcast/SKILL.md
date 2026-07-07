@@ -117,4 +117,5 @@ skills/xs-podcast/scripts/podcast_audio/
 「Rebuildの最新回をまとめて」
 「○○ポッドキャストをダウンロードして文字起こしして」
 「Podcastの内容を教えて」
+「https://example.com/feed.xml の最新回をまとめて」
 ```

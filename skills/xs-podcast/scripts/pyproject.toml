@@ -3,7 +3,7 @@ name = "podcast-downloader"
 version = "0.1.0"
 description = "汎用ポッドキャスト音声ダウンローダー - RSSフィードから音声ファイルをダウンロード"
 authors = [
-    {name = "karaage", email = "karaage@example.com"}
+    {name = "ai-assistant-workspace contributors", email = "example@example.com"}
 ]
 requires-python = ">=3.8"
 classifiers = [
@@ -25,9 +25,9 @@ dependencies = [
 podcast-downloader = "podcast_downloader:main"
 
 [project.urls]
-"Homepage" = "https://github.com/karaage0703/podcast-downloader"
-"Bug Reports" = "https://github.com/karaage0703/podcast-downloader/issues"
-"Source" = "https://github.com/karaage0703/podcast-downloader"
+"Homepage" = "https://github.com/karaage0703/ai-assistant-workspace"
+"Bug Reports" = "https://github.com/karaage0703/ai-assistant-workspace/issues"
+"Source" = "https://github.com/karaage0703/ai-assistant-workspace"
 
 [build-system]
 requires = ["hatchling"]

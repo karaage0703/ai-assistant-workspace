@@ -1,94 +1,131 @@
 ---
 name: xs-xangi-settings
-description: xangiの設定をチャットから動的に変更するスキル。.envファイルの編集と再起動を行う。「このチャンネルでも応答して」「タイムアウト変えて」「設定確認して」で使用。ローカル実行専用（Docker環境では使用不可）。
+description: xangiの設定確認・設定ファイル変更・反映再起動を行うスキル。最新仕様は対象cloneのxangiドキュメントを参照する。「このチャンネルでも応答して」「タイムアウト変えて」「設定確認して」で使用。
 ---
 
 # xangi 設定変更スキル
 
-チャットからxangiの設定（.envファイル）を動的に変更する。
+チャットから xangi の設定確認、設定ファイル変更、反映再起動を行う。
 
-## 前提条件
+## 基本方針
 
-- **ローカル実行のみ対応**（Docker環境では.envを変更できない）
-- xangiの.envファイルパス: xangiのルートディレクトリに配置
+xangi 本体の設定項目や運用コマンドは変わる。スキル内の古い一覧だけで判断せず、作業前に対象 clone の一次情報を読む。
 
-## 自分のインスタンス特定（設定変更前に必ず実行！）
+読む順番:
 
-複数のxangiインスタンスが同一マシンで動いている場合がある。
-**間違ったインスタンスの.envを変更すると意味がない。**
+1. `[XANGI_ROOT]/docs/usage.md` の環境変数・service・再起動まわり
+2. `[XANGI_ROOT]/.env.example`
+3. `[XANGI_ROOT]/src/prompts/xangi-commands-chat-platform.ts`（チャット上でAIに注入される最新運用ルール）
 
-### 特定手順
-
-```bash
-# 1. 自分のプロセスのセッションIDを確認
-ps aux | grep claude | grep "$(cat /proc/self/ppid 2>/dev/null || echo $$)" | head -3
-
-# 2. xangi関連の.envファイルを一覧
-ls ~/xangi*/.env 2>/dev/null
-
-# 3. 各.envのWORKSPACE_PATHを確認して、自分のワークスペースと一致するものを特定
-grep WORKSPACE_PATH ~/xangi*/.env
-```
-
-### 判定ロジック
-
-1. 自分の `WORKSPACE_PATH`（= このリポジトリのルート）と一致する `.env` を探す
-2. 複数ある場合は、プロセス一覧から起動元ディレクトリを確認
-3. **特定できたら、そのパスを使って設定変更する**
-
----
+`[XANGI_ROOT]` は設定変更対象の xangi clone。`[WORKSPACE]` はこのワークスペース。
 
 ## 実行フロー
 
-### Step 0: 自分のインスタンスを特定（上記手順）
+### Step 1: 対象インスタンスを特定
 
-### Step 1: 要望の種類を判定
-
-- **設定確認** → Step 2a
-- **設定変更** → Step 2b
-
-### Step 2a: 設定確認
+複数の xangi clone が同じマシンで動くことがあるため、まず対象 clone を決める。
 
 ```bash
-# 現在の設定を確認（トークン等はマスク）— パスはStep 0で特定したものを使う
-cat /path/to/xangi/.env | grep -v TOKEN | grep -v "^#" | grep -v "^$"
+# 実行中コンテキストが xangi 上なら cwd/repo を確認
+pwd
+git rev-parse --show-toplevel 2>/dev/null
+
+# xangi clone 候補と設定ファイルを確認
+find "$HOME" -maxdepth 2 -name .env -path "$HOME/xangi-*/*" -print 2>/dev/null
+
+# WORKSPACE_PATH / XANGI_INSTANCE_ID / XANGI_PROCESS_NAME / DATA_DIR を見て対象を絞る
+for f in "$HOME"/xangi-*/.env; do
+  [ -f "$f" ] || continue
+  echo "## $f"
+  grep -E '^(WORKSPACE_PATH|XANGI_INSTANCE_ID|XANGI_PROCESS_NAME|DATA_DIR)=' "$f" || true
+done
 ```
 
-**出力フォーマット:**
+判定の目安:
+
+- 現在の Discord / Slack / Web Chat / LINE セッションを動かしている clone を優先
+- `WORKSPACE_PATH` がこのワークスペースを指す clone を優先
+- `XANGI_PROCESS_NAME` は `./bin/xangi service ...` の PM2 対象名
+- Docker運用では host 側の compose / 設定ファイルを対象にし、コンテナ内だけを書き換えない
+
+### Step 2: 最新ドキュメントを確認
+
+対象 clone が `/path/to/xangi` なら:
+
+```bash
+cd /path/to/xangi
+rg -n "service start|service stop|service restart|service status|XANGI_PROCESS_NAME|TIMEOUT_MS|CHANNEL_OVERRIDES|AUTO_REPLY_CHANNELS|SLACK_AUTO_REPLY_CHANNELS|system_settings|system_restart" \
+  docs/usage.md .env.example src/prompts/xangi-commands-chat-platform.ts
 ```
-現在の設定
 
-**Discord:**
-- AUTO_REPLY_CHANNELS: 123456789, 987654321
-- DISCORD_STREAMING: true
+運用ルールの現在形:
 
-**AI設定:**
-- AGENT_BACKEND: claude-code
-- TIMEOUT_MS: 300000
+- 起動・停止・再起動・状態確認は対象 clone の `./bin/xangi service start|stop|restart|status` を使う
+- PATHから使う場合は `xangi-dev` / `xangi-prod` のような名前付き symlink を使う
+- `xangi-cmd system_restart` は起動中プロセスに graceful shutdown を要求する低レベル操作
+- `system_settings` は確認用。AI は `system_settings` で設定変更しない
+- 設定ファイル変更後は対象 clone で `./bin/xangi service restart` する
+
+### Step 3: 要望の種類を判定
+
+- 設定確認 → Step 4a
+- 設定変更 → Step 4b
+
+### Step 4a: 設定確認
+
+```bash
+cd /path/to/xangi
+
+# service 状態
+./bin/xangi service status
+
+# 現在の設定を確認（トークン等は表示しない）
+grep -vE '(TOKEN|SECRET|PASSWORD|API_KEY)=' .env | grep -v '^#' | grep -v '^$'
+```
+
+出力例:
+
+```
+xangi 現在の設定
+
+- 対象: /path/to/xangi
+- service: online
+- AUTO_REPLY_CHANNELS: 123456789,987654321
+- AGENT_BACKEND: codex
+- TIMEOUT_MS: 1800000
 
 ※ トークン類は非表示
 ```
 
-### Step 2b: 設定変更
+### Step 4b: 設定変更
 
-1. **変更内容を確認**: ユーザーの意図を把握
-2. **対象変数を特定**: `[SKILL_DIR]/references/env-variables.md` があれば参照
-3. **現在値を確認**: .envファイルを読む
-4. **.envを編集**: 該当行を更新（なければ追加）
-5. **変更を報告**:
+1. ユーザーの意図から対象変数を決める
+2. 対象 clone の `docs/usage.md` / `.env.example` で現在の名前・デフォルト・注意を確認する
+3. 設定ファイルの現在値を読む
+4. 設定ファイルを編集する（該当行を更新、なければ追加）
+5. `git diff -- .env` は secrets を含む可能性があるため、そのまま貼らない。値は必要な範囲だけマスクして報告する
+6. 反映に再起動が必要な場合、対象 clone とコマンドを明示して承認を取る
 
 ```
 設定を変更しました
 
-**変更内容:**
+変更内容:
 - AUTO_REPLY_CHANNELS: (なし) → 123456789,987654321
 
-反映には再起動が必要です。再起動しますか？
+反映には再起動が必要です。
+対象: /path/to/xangi
+実行予定: cd /path/to/xangi && ./bin/xangi service restart
 ```
 
-6. **再起動**: ユーザーの承諾後、`SYSTEM_COMMAND:restart` を送信
+再起動の承認後:
 
-## よくある変更パターン
+```bash
+cd /path/to/xangi
+./bin/xangi service restart
+./bin/xangi service status
+```
+
+## よくある変更
 
 ### チャンネル追加（メンションなしで応答）
 
@@ -96,6 +133,8 @@ cat /path/to/xangi/.env | grep -v TOKEN | grep -v "^#" | grep -v "^$"
 「#generalでも反応して」
 → AUTO_REPLY_CHANNELS にチャンネルIDを追加
 ```
+
+Slack の場合は `SLACK_AUTO_REPLY_CHANNELS` を使う。必要な Slack scope は対象 clone の `docs/slack-setup.md` で確認する。
 
 ### タイムアウト変更
 
@@ -118,24 +157,42 @@ cat /path/to/xangi/.env | grep -v TOKEN | grep -v "^#" | grep -v "^$"
 → DISCORD_SHOW_THINKING=false に変更
 ```
 
-## 注意事項
+### バックエンド切り替え設定
 
-- **トークン類は絶対に変更・表示しない**
-  - `DISCORD_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`
-- **許可ユーザーIDは慎重に**
-  - `DISCORD_ALLOWED_USER`, `SLACK_ALLOWED_USER`
-- 変更後は必ず再起動が必要
-
-## Docker環境での代替案
-
-Docker環境では.envを直接変更できないため：
+チャンネル単位の切り替えは、xangi の slash command が `CHANNEL_OVERRIDES` に永続化する。手動編集する前に現在のコマンド名を `docs/usage.md` で確認する。
 
 ```
-Docker環境では設定を動的に変更できません。
+「ALLOWED_BACKENDSを全部有効にして」
+→ ALLOWED_BACKENDS=claude-code,codex,gemini,local-llm に変更 → 再起動
 
-**代替方法:**
-1. ホスト側で .env を編集
-2. `docker compose restart` でコンテナ再起動
+「Local LLMのモデルを変えて」
+→ LOCAL_LLM_MODEL=<model> に変更 → 再起動
+```
+
+## Docker運用
+
+Docker運用ではコンテナ内の一時設定ではなく、host 側の compose / 設定ファイルを変更する。反映は対象 clone の docker compose で行う。
+
+```bash
+cd /path/to/xangi
+docker compose restart xangi
+```
+
+## Gotchas
+
+- xangi clone を取り違えると変更が反映されない。最初に `WORKSPACE_PATH` と `XANGI_PROCESS_NAME` を見る
+- トークン・secret は表示しない。確認時は `grep -vE '(TOKEN|SECRET|PASSWORD|API_KEY)='` を使う
+- `system_settings` で AI が設定変更しない。最新の `XANGI_COMMANDS` でも確認専用扱い
+- 稼働中の自分を動かしている xangi を再起動する場合は、会話が一時中断するため、対象とコマンドを明示してから承認を取る
+
+## 完了前チェックリスト
+
+```
+□ 対象 clone の docs/usage.md / .env.example / src/prompts/xangi-commands-chat-platform.ts を確認した
+□ 対象 clone と設定ファイルを取り違えていない
+□ secret を表示していない
+□ 設定変更後、反映に必要な再起動コマンドを明示した
+□ 再起動した場合は ./bin/xangi service status で状態を確認した
 ```
 
 ## 使用例
@@ -145,4 +202,5 @@ xangiの設定確認して
 このチャンネルでも反応するようにして（チャンネルID: 123456789）
 タイムアウトを10分に変更して
 ストリーミング出力をオフにして
+ALLOWED_BACKENDSを設定して
 ```
