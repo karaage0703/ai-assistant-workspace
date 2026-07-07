@@ -50,7 +50,7 @@ Discord で動く xangi 作って
 xangi にスタックチャンも繋ぎたい
 ```
 
-borot / Claude Code / Codex CLI から呼び出すと、まず 4 モードのテーブルが提示され、ユーザーが番号で選んだ後に該当 references を Read して具体的なセットアップに入る。
+Claude Code / Codex CLI / Grok CLI / xangi から呼び出すと、まず 4 モードのテーブルが提示され、ユーザーが番号で選んだ後に該当 references を Read して具体的なセットアップに入る。
 
 ## 関連リンク
 

@@ -55,7 +55,7 @@
 | スキル | 説明 | トリガー |
 |--------|------|----------|
 | **xs-skill-creator** | 新しいスキルを作成する | 「スキルを作って」 |
-| **xs-xangi-settings** | xangiの設定をチャットから動的に変更 | 「設定確認して」「タイムアウト変えて」 |
+| **xs-xangi-settings** | xangiの設定確認・設定ファイル変更・反映再起動。対象cloneの最新docsを参照 | 「設定確認して」「タイムアウト変えて」 |
 | **xs-xangi-onboarding** | xangiの新しいインスタンスをブラウザモードで立ち上げて初心者を伴走 | 「xangi 入れたい」「xangi セットアップ」 |
 | **xs-spontaneous-talk** | AIが自発的に話しかける（確率判定+cron） | 「話しかけて」「spontaneous-talk」 |
 

@@ -4,7 +4,9 @@
 
 ## ソース
 
-[karaage0703/tech-blog-rss-feed](https://karaage0703.github.io/tech-blog-rss-feed/) のRSSフィード（日本のテックブログ・企業ブログを横断的にまとめたもの）から取得。
+デフォルトでは [karaage0703/tech-blog-rss-feed](https://karaage0703.github.io/tech-blog-rss-feed/) のRSSフィード（日本のテックブログ・企業ブログを横断的にまとめたもの）から取得します。
+
+別のRSSフィードを使う場合は、`.env` や実行環境で `TECHNEWS_RSS_URL` を設定してください。
 
 ## 使用例
 
@@ -29,10 +31,10 @@ $ bash triggers/technews/handler.sh
 
 ## カスタマイズ
 
-別のRSSフィードを使いたい場合は、`handler.sh` の `curl` 先URLを差し替えればOK。
+別のRSSフィードを使いたい場合は、`TECHNEWS_RSS_URL` を差し替えればOK。
 
 ```bash
-curl -s "https://your.feed.example/rss.xml" 2>/dev/null | ...
+TECHNEWS_RSS_URL=https://your.feed.example/rss.xml bash triggers/technews/handler.sh
 ```
 
 複数フィードを横断したい・要約も付けたい場合は、トリガーよりも [`skills/xs-tech-news-curation/`](../../skills/xs-tech-news-curation/) スキルの方が向いている（AIが内容を見て選別・解説してくれる）。

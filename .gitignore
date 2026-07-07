@@ -28,6 +28,8 @@ skills/xs-calendar/manual_events.json
 # ワークスペースRAG
 *.db
 *.db-journal
+.workspace_rag/
 
 # xangi / runtime state
 .xangi/
+logs/
