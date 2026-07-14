@@ -163,7 +163,7 @@ uv run python workspace_rag_server.py -w /path/to/workspace -p 7890 [OPTIONS]
 ワークスペース内のファイル（.md, .py, .ts, .json, etc.）
   ↓ index（差分検出 + チャンク分割 + 埋め込み生成）
 SQLite DB（チャンク + 埋め込みベクトル + FTS5 trigram + facts テーブル）
-  ↓ search（クエリ埋め込み → コサイン類似度 + FTS5スコア + path_weight × freshness × decay?）
+  ↓ search（クエリ埋め込み → コサイン類似度 + FTS5スコア + path_weight。forgetting=on のときだけ freshness × decay）
 検索結果（関連度スコア付き）+ ファクト相乗り
 ```
 

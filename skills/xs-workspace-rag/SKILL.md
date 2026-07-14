@@ -229,6 +229,22 @@ uv run python workspace_rag.py search -w [WORKSPACE] -q "検索クエリ" --json
 
 チャットの短い返答では、表形式にこだわらず「RAG: 5件ヒット、主に `notes/foo.md` と `memory/yyyymmdd.md` を参照」のように短くまとめてもよい。
 
+#### 固有名詞・過去履歴を「無い」と判定する前のガード
+
+人名、施設名、製品名、イベント名、過去記事を探す場合、依頼文全体を1本の長い
+クエリに詰め込まない。FTS5の空白区切りは実質ANDになり、文書にない周辺語が
+1つ混ざるだけでキーワード点が0になる。
+
+1. 最初の検索結果は件数だけでなく、返った全 `k` 件の `file_path` と本文を確認する
+2. 固有名詞を2〜3個の短いクエリへ分解する
+   - 例: `施設名` / `人名 施設名` / `イベント名`
+3. パスや本文に対象語が直接含まれる結果は、スコアが低くてもファイルを開く
+4. 「記録なし」「直接一致なし」と回答する前に、`xs-agentic-memory-search` の
+   `helper.sh grep` で表記揺れを含む2〜3語を検索する
+
+RAGが結果を返しているのに採用しなかった場合は「RAGでヒットしなかった」と表現せず、
+「結果に出ていたが読み落とした」と区別して報告する。
+
 ## R²AG簡易版について
 
 論文「R²AG: Incorporating Retrieval Information into RAG」（EMNLP 2024）のアイデアを簡易実装。
@@ -305,7 +321,8 @@ pm2 startup
 - **データ保存先:** `[WORKSPACE]/.workspace_rag/index_<hash>.db`
 - **対応形式:** `.md`, `.txt`, `.py`, `.js`, `.ts`, `.json`, `.yaml`, `.toml`, `.csv` 等
 - **除外対象:** `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, 画像・バイナリ等
-- **スコア計算:** `base_score * path_weight * freshness_score`（forgetting=on 時はさらに decay）
+- **スコア計算:** 通常は `base_score * path_weight`。`forgetting=on` のときだけ
+  `base_score * path_weight * freshness_score * decay`
 
 ## エラー対処
 
