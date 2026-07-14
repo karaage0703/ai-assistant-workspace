@@ -668,7 +668,8 @@ def do_search(query: str, top_k: int = 5, min_score: float = 0.3,
         scored.append((combined, chunk_id, v, f))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    # 後で path_weight/freshness/decay を掛けて再ソートするので少し多めに保持
+    # 後で path_weight と、forgetting=on 時だけ freshness/decay を掛けて
+    # 再ソートするので少し多めに保持
     scored = scored[:max(top_k * 4, 20)]
 
     results = []
@@ -687,7 +688,9 @@ def do_search(query: str, top_k: int = 5, min_score: float = 0.3,
 
         from workspace_rag import get_path_weight, get_freshness_score
         pw = get_path_weight(file_path)
-        fr = get_freshness_score(file_path, _workspace)
+        # forgetting=off は全期間を平等に扱う契約。古い文書を更新時刻だけで
+        # 沈めず、時間減衰を明示した検索だけ freshness を使う。
+        fr = get_freshness_score(file_path, _workspace) if forgetting else 1.0
 
         decay = 1.0
         if forgetting:
