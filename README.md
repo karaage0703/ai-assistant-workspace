@@ -76,13 +76,19 @@ Codex CLI / Grok CLI 用にも `.agents/skills`、`.grok/skills` のリンクを
 
 ### xangiで使う場合
 
-xangiの `WORKSPACE_PATH` にこのリポジトリを指定すると、Discord / Slack / LINE / Web Chat から同じワークスペースを使えます。
+xangiをインストールした後、xangi本体のセットアップを実行します。
 
 ```bash
-WORKSPACE_PATH=/path/to/ai-assistant-workspace
+xangi setup
 ```
 
-xangi側の設定・起動方法は [xangi](https://github.com/karaage0703/xangi) の README を参照してください。Dockerで動かす場合も、ワークスペースはコンテナ内にマウントして使います。
+セットアップでは既存ワークスペースを選ぶか、このリポジトリを推奨テンプレートとして取得できます。Discord / Slack / LINE / Telegram / Notionなどのsecret設定が必要な場合は、AIとの会話へ値を貼らず、ローカル設定画面を使います。
+
+```bash
+xangi settings
+```
+
+xangiのインストール、対応AI、サービス起動、各チャット連携の最新手順は [xangi](https://github.com/karaage0703/xangi) のREADMEと同梱ドキュメントを正本として参照してください。このワークスペースは、AIの人格・記憶・スキル・ユーザーデータを管理し、xangi本体の起動手順やsecret値は管理しません。
 
 ## ディレクトリ構成
 
