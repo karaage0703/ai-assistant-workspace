@@ -95,33 +95,59 @@ description: [50-200文字。何をするか＋いつ使うか＋トリガーフ
 - note-takingスキルがあればそちらへの委譲を記述
 - 直接保存ロジックを書かない
 
-### Step 6: 品質チェック
+### Step 6: README.md作成（人間向け）
+
+SKILL.mdはAI向けの行動指示、README.mdは人間向けの説明として分ける。極小スキルを除き、次を含むREADME.mdを作成する。
+
+- 何ができるか
+- 使い方と出力例
+- 必要な依存・セットアップ
+- よくあるエラーと対処
+- 参考にしたリポジトリ、記事、ライセンス
+
+AIが実行時に読む手順はSKILL.mdへ置き、背景や長い説明をREADME.mdへ分離する。
+
+### Step 7: 品質チェック
 
 `[SKILL_DIR]/references/checklist.md` の全項目を確認。
 
-### Step 7: 登録確認
+フロントマターは全スキルを一括確認する。
+
+```bash
+for file in [WORKSPACE]/skills/*/SKILL.md; do
+  head -1 "$file" | grep -q '^---$' || echo "MISSING: $file"
+done
+```
+
+### Step 8: 登録確認
 
 スキルの配置場所がシンボリックリンクで管理されている場合（例: `.claude/skills/` → `skills/`）、`skills/` にフォルダを作るだけで自動認識される。
 
 そうでない場合は、AIツールの設定に新しいスキルを登録する。
 
-### Step 8: README更新
+### Step 9: スキル一覧更新
 
 `[WORKSPACE]/skills/README.md` があれば、スキル一覧に追加。
 
-### Step 9: Git同期
+### Step 10: Git同期
 
 ```bash
-cd [WORKSPACE] && git add -A && git commit -m "Add skill: <skill-name>" && git push
+cd [WORKSPACE]
+git add skills/<skill-name> skills/README.md
+git diff --cached
+git commit -m "Add skill: <skill-name>"
 ```
 
-### Step 10: 完了報告
+公開リポジトリへpush・PR作成する場合は、対象と操作を列挙してユーザーのOKを取る。
+
+### Step 11: 完了報告
 
 ```
 スキル作成完了！
 
 skills/<skill-name>/
-- SKILL.md（XX行）
+- SKILL.md（XX行、AI向け）
+- README.md（人間向け）
 - scripts/（あれば）
 - references/（あれば）
 ```

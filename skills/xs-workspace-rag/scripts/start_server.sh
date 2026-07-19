@@ -34,10 +34,25 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 echo "Starting Workspace RAG Server on port ${PORT}..."
 cd "$SCRIPT_DIR"
-nohup uv run python workspace_rag_server.py \
-    -w "$WORKSPACE" -p "$PORT" \
-    >> "$LOG_FILE" 2>&1 &
+if command -v setsid >/dev/null 2>&1; then
+    setsid uv run python workspace_rag_server.py \
+        -w "$WORKSPACE" -p "$PORT" \
+        >> "$LOG_FILE" 2>&1 < /dev/null &
+else
+    echo "setsid is unavailable; using nohup fallback. Prefer launchd or another service manager for persistent operation."
+    nohup uv run python workspace_rag_server.py \
+        -w "$WORKSPACE" -p "$PORT" \
+        >> "$LOG_FILE" 2>&1 < /dev/null &
+fi
 
-echo "PID: $!"
+SERVER_PID=$!
+echo "$SERVER_PID" > "$PID_FILE"
+sleep 1
+if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "Workspace RAG Server failed to start. Log: $LOG_FILE"
+    exit 1
+fi
+
+echo "PID: $SERVER_PID"
 echo "Log: $LOG_FILE"
 echo "Health: curl http://127.0.0.1:${PORT}/health"

@@ -77,28 +77,49 @@ uv run python workspace_rag.py index -w [WORKSPACE] --max-file-size 200000
 ### バックグラウンド実行（長時間インデックス用）
 
 AIツール（Claude Code / Codex CLI）のセッションでは、長時間処理でタイムアウトする可能性がある。
-その場合は **nohup + バックグラウンド実行** を使う。
+その場合は **setsid + バックグラウンド実行** を使う。`nohup` 単独では親tool shellのprocess group cleanupに巻き込まれる環境がある。
+
+以下はLinux / WSLの例。`setsid` がないmacOSでは、後述のlaunchdまたはpm2などservice managerで常駐させる。
 
 ```bash
 cd [SKILL_DIR]/scripts
 
-# バックグラウンドでインデックス作成（ログはファイルに出力）
-nohup uv run python workspace_rag.py index -w [WORKSPACE] > /tmp/rag_index.log 2>&1 &
+# バックグラウンドでインデックス作成（PID・ログ・終了コードを保存）
+RAG_STATE_DIR="$(mktemp -d)"
+TRIGGER_CHANNEL=""  # xangiの場合だけチャンネルIDを設定
+setsid bash -lc '
+  state_dir="$1"
+  trigger_channel="$2"
+  echo $$ > "$state_dir/pid"
+  uv run python workspace_rag.py index -w [WORKSPACE] > "$state_dir/index.log" 2>&1
+  rc=$?
+  echo "$rc" > "$state_dir/exit"
+  if [ -n "$trigger_channel" ] && command -v xangi-cmd >/dev/null 2>&1; then
+    xangi-cmd trigger --channel "$trigger_channel" \
+      --message "RAGインデックス処理が終了しました。保存済みの終了状態とログを確認してください" \
+      --source workspace-rag-index
+  fi
+  exit "$rc"
+' bash "$RAG_STATE_DIR" "$TRIGGER_CHANNEL" >/dev/null 2>&1 &
 
-# プロセスIDを確認
-echo $!
+# 起動報告前に、親とは別SID/PGIDで生存していることを確認
+sleep 2
+ps -o pid,ppid,sid,pgid,stat,etime,cmd -p "$(cat "$RAG_STATE_DIR/pid")"
+echo "State: $RAG_STATE_DIR"
 
 # 進捗確認
-tail -f /tmp/rag_index.log
+tail -f "$RAG_STATE_DIR/index.log"
 
-# 完了確認（プロセスが終了したか）
-ps aux | grep workspace_rag
+# 完了確認
+cat "$RAG_STATE_DIR/exit"
+tail "$RAG_STATE_DIR/index.log"
 ```
 
 **ポイント:**
-- `nohup ... &` でセッションが切れても処理が継続
-- ログは `/tmp/rag_index.log` で進捗確認可能
-- 完了後に `tail /tmp/rag_index.log` で結果を確認
+- `setsid bash -lc '...' &` で親tool shellから分離する
+- 開始時はPIDの存在だけでなく、`ps` で別SID/PGIDと生存を確認する
+- 完了時は終了コードとログを確認する
+- xangiでは `TRIGGER_CHANNEL` を設定し、成功・失敗の両方で結果確認のturnを起動する
 
 ### Step 3: 検索（常駐サーバー経由 — 推奨）
 
@@ -178,6 +199,20 @@ curl -s "http://127.0.0.1:7890/facts"
 - **何もしない**: 既存と内容が同等 → スキップ
 
 **重要**: 別トピックを既存IDに UPDATE しない（`old_values` 履歴が混乱する）。違うトピックは ADD。
+
+#### ファクトの粒度
+
+ファクトは「後から検索で一発で取り出したい、比較的変わりにくい事実」を短く持つ。目安は1〜3行、200字程度まで。
+
+ファクトへ入れる例:
+- 好み、習慣、記念日、継続利用する環境情報
+- 進行中プロジェクトの短い状態と、詳細ファイルへのポインタ
+
+別の場所へ保存する例:
+- PRのコミット列挙、検証ログ、日々変わる進捗 → `memory/YYYYMMDD.md` または `MEMORY.md`
+- 調査結果、比較、設計の全文 → `notes/`
+
+同じファクトの最新化だけUPDATEし、別トピックはADDする。長文になりそうなら、核となる事実と詳細ファイルへの参照だけを残す。
 
 `/search` のレスポンスにもファクトが相乗りで返る（フィールド `facts`）ので、検索だけでファクトも引ける。
 
