@@ -162,10 +162,37 @@ workspace-RAG のファクト機能を使う場合は、必ず次の順で進め
 
 Docker build、RAGインデックス、動画処理、外部AIレビューなど、時間がかかる処理はセッション切れを前提に扱う。
 
-- `nohup ... > /tmp/task.log 2>&1 &` のようにバックグラウンド実行し、ログファイルを残す
-- プロセスID、ログパス、確認コマンドをユーザーに伝える
-- xangiで動いている場合は、必要に応じて `xangi-cmd trigger` を末尾に連結して、完了時に自分を起こす
+- `nohup ... &` 単独ではなく、`setsid bash -lc` で親のprocess groupから分離する
+- PID、ログ、終了コードをファイルへ保存し、開始報告前に別SID/PGIDで生存していることを確認する
+- xangiで動いている場合は、成功・失敗のどちらでも終了状態を保存した後に `xangi-cmd trigger` を呼ぶ
 - 定刻で見に行く必要がある場合は、スケジュール機能を使う
+
+例:
+
+以下はLinux / WSLの例。`setsid` がない環境ではlaunchdなどOSのservice managerを使う。`nohup` 単独への置き換えは同等ではない。
+
+```bash
+TASK_STATE_DIR="$(mktemp -d)"
+TRIGGER_CHANNEL=""  # xangiの場合だけチャンネルIDを設定
+setsid bash -lc '
+  state_dir="$1"
+  trigger_channel="$2"
+  echo $$ > "$state_dir/pid"
+  <COMMAND> > "$state_dir/task.log" 2>&1
+  rc=$?
+  echo "$rc" > "$state_dir/exit"
+  if [ -n "$trigger_channel" ] && command -v xangi-cmd >/dev/null 2>&1; then
+    xangi-cmd trigger --channel "$trigger_channel" \
+      --message "長時間処理が終了しました。保存済みの終了状態とログを確認してください" \
+      --source long-task
+  fi
+  exit "$rc"
+' bash "$TASK_STATE_DIR" "$TRIGGER_CHANNEL" >/dev/null 2>&1 &
+
+sleep 2
+ps -o pid,ppid,sid,pgid,stat,etime,cmd -p "$(cat "$TASK_STATE_DIR/pid")"
+echo "State: $TASK_STATE_DIR"
+```
 
 「あとで見ます」と言うだけでは、セッション終了後に自動で戻れない。必ずファイル、trigger、scheduleなど外部に残る導線を作る。
 

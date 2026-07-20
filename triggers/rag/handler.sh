@@ -13,6 +13,8 @@ RUNTIME_DIR="${WORKSPACE}/.workspace_rag"
 PID_FILE="${RUNTIME_DIR}/server.pid"
 LOG_FILE="${RUNTIME_DIR}/server.log"
 INDEX_LOG="${RUNTIME_DIR}/index.log"
+INDEX_PID_FILE="${RUNTIME_DIR}/index.pid"
+INDEX_EXIT_FILE="${RUNTIME_DIR}/index.exit"
 
 mkdir -p "${RUNTIME_DIR}"
 
@@ -30,8 +32,13 @@ start_server() {
     return 1
   fi
   cd "$SCRIPT_DIR" || return 1
-  nohup uv run python workspace_rag_server.py -w "$WORKSPACE" -p "$PORT" \
-    >> "$LOG_FILE" 2>&1 &
+  if command -v setsid >/dev/null 2>&1; then
+    setsid uv run python workspace_rag_server.py -w "$WORKSPACE" -p "$PORT" \
+      >> "$LOG_FILE" 2>&1 < /dev/null &
+  else
+    nohup uv run python workspace_rag_server.py -w "$WORKSPACE" -p "$PORT" \
+      >> "$LOG_FILE" 2>&1 < /dev/null &
+  fi
   echo $! > "$PID_FILE"
   for _ in $(seq 1 15); do
     sleep 1
@@ -53,11 +60,36 @@ start_index() {
     echo "workspace-ragスキルが見つかりません: $SCRIPT_DIR"
     return 1
   fi
-  cd "$SCRIPT_DIR" || return 1
-  nohup uv run python workspace_rag.py index -w "$WORKSPACE" \
-    > "$INDEX_LOG" 2>&1 &
-  echo "インデックス作成をバックグラウンドで開始しました（PID $!）"
+  rm -f "$INDEX_EXIT_FILE"
+  if command -v setsid >/dev/null 2>&1; then
+    DETACH_COMMAND=(setsid)
+  else
+    DETACH_COMMAND=(nohup)
+  fi
+  "${DETACH_COMMAND[@]}" bash -lc '
+    script_dir="$1"
+    workspace="$2"
+    log_file="$3"
+    exit_file="$4"
+    cd "$script_dir" || exit 1
+    uv run python workspace_rag.py index -w "$workspace" > "$log_file" 2>&1
+    rc=$?
+    echo "$rc" > "$exit_file"
+    exit "$rc"
+  ' bash "$SCRIPT_DIR" "$WORKSPACE" "$INDEX_LOG" "$INDEX_EXIT_FILE" >/dev/null 2>&1 < /dev/null &
+  echo $! > "$INDEX_PID_FILE"
+  sleep 1
+  if ! kill -0 "$(cat "$INDEX_PID_FILE")" 2>/dev/null && [ ! -f "$INDEX_EXIT_FILE" ]; then
+    echo "インデックス作成を開始できませんでした。ログ: $INDEX_LOG"
+    return 1
+  fi
+  echo "インデックス作成をバックグラウンドで開始しました（PID $(cat "$INDEX_PID_FILE")）"
   echo "進捗: tail -f $INDEX_LOG"
+  echo "終了状態: cat $INDEX_EXIT_FILE"
+  if [ "${DETACH_COMMAND[0]}" = "nohup" ]; then
+    echo "setsidがないためnohup fallbackを使用しました。永続運用にはservice managerを使ってください"
+  fi
+  echo "このtrigger単体では完了通知しません。上の終了状態を確認してください"
 }
 
 health_check() {

@@ -9,7 +9,7 @@ description: 音声ファイルをテキストに文字起こしするスキル�
 
 ## 絶対遵守事項
 
-- **長時間処理（10分以上の音声）はnohupでバックグラウンド実行**
+- **長時間処理（10分以上の音声）はPID・ログ・終了コードを保存し、親process groupから分離して実行**
 
 ## 対話フロー
 
@@ -40,19 +40,36 @@ description: 音声ファイルをテキストに文字起こしするスキル�
 uvx transcriber_tool transcribe "[音声ファイルパス]" --model-size [モデル] --output "[出力パス].txt"
 
 # 長い音声（10分以上）はバックグラウンド
-nohup uvx transcriber_tool transcribe "[音声ファイルパス]" --model-size [モデル] --output "[出力パス].txt" > /tmp/transcription.log 2>&1 &
-echo "PID: $!"
+# 以下はLinux / WSLの例。macOSではlaunchdなどservice managerを使う
+TRANSCRIPTION_STATE_DIR="$(mktemp -d)"
+setsid bash -lc '
+  state_dir="$1"
+  input="$2"
+  model="$3"
+  output="$4"
+  echo $$ > "$state_dir/pid"
+  uvx transcriber_tool transcribe "$input" --model-size "$model" --output "$output" > "$state_dir/transcription.log" 2>&1
+  rc=$?
+  echo "$rc" > "$state_dir/exit"
+  exit "$rc"
+' bash "$TRANSCRIPTION_STATE_DIR" "[音声ファイルパス]" "[モデル]" "[出力パス].txt" >/dev/null 2>&1 &
+
+sleep 2
+ps -o pid,ppid,sid,pgid,stat,etime,cmd -p "$(cat "$TRANSCRIPTION_STATE_DIR/pid")"
+echo "State: $TRANSCRIPTION_STATE_DIR"
 ```
 
 ### Step 4: 進行状況確認（バックグラウンド実行時）
 
 ```bash
 # ログ確認
-tail -f /tmp/transcription.log
+tail -f "$TRANSCRIPTION_STATE_DIR/transcription.log"
 
-# プロセス確認
-ps aux | grep transcriber_tool
+# 完了確認
+cat "$TRANSCRIPTION_STATE_DIR/exit"
 ```
+
+xangiでturnを跨ぐ場合は、処理の末尾で終了状態を保存した後に `xangi-cmd trigger` を呼ぶ。triggerを設定できない環境では、ログ・終了状態の確認をユーザーへ明示的に引き継ぎ、自動で戻ると約束しない。
 
 ### Step 5: 完了報告
 
@@ -72,6 +89,6 @@ ps aux | grep transcriber_tool
 ## トラブルシューティング
 
 - **transcriber_tool未インストール**: 初回実行時に自動インストールされる
-- **タイムアウト**: nohupでバックグラウンド実行を使用
+- **タイムアウト**: `setsid` で分離し、PID・ログ・終了コードを保存する
 - **メモリ不足**: より小さいモデル（tiny/base）を使用
 - **日本語の精度が低い**: モデルを large にする

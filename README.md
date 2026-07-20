@@ -46,7 +46,7 @@ AIコーディングツールのセッションは毎回まっさらな状態で
 
 ### 長時間処理は復帰導線を作る
 
-Docker build、RAGインデックス、動画処理、外部AIの並列レビューなど時間がかかる処理は、`nohup` でバックグラウンド実行し、ログファイルを残します。xangiで使う場合は、完了時に `xangi-cmd trigger` で自分を起こす導線を付けると、処理完了後に結果確認まで自動化できます。
+Docker build、RAGインデックス、動画処理、外部AIの並列レビューなど時間がかかる処理は、親プロセスの終了から分離して実行し、PID・ログ・終了コードを残します。Linux / WSLでは`setsid bash -lc`、macOSではlaunchdなどOSのservice managerを使います。`nohup ... &` 単独は環境によって親process groupの終了に巻き込まれるため、同等の代替にはなりません。xangiで使う場合は、成功・失敗のどちらでも終了状態を保存した後に `xangi-cmd trigger` で自分を起こす導線を付けます。具体例は `AGENTS.md` の「長時間タスク」を参照してください。
 
 ## クイックスタート
 
@@ -76,13 +76,19 @@ Codex CLI / Grok CLI 用にも `.agents/skills`、`.grok/skills` のリンクを
 
 ### xangiで使う場合
 
-xangiの `WORKSPACE_PATH` にこのリポジトリを指定すると、Discord / Slack / LINE / Web Chat から同じワークスペースを使えます。
+xangiをインストールした後、xangi本体のセットアップを実行します。
 
 ```bash
-WORKSPACE_PATH=/path/to/ai-assistant-workspace
+xangi setup
 ```
 
-xangi側の設定・起動方法は [xangi](https://github.com/karaage0703/xangi) の README を参照してください。Dockerで動かす場合も、ワークスペースはコンテナ内にマウントして使います。
+セットアップでは既存ワークスペースを選ぶか、このリポジトリを推奨テンプレートとして取得できます。Discord / Slack / LINE / Telegram / Notionなどのsecret設定が必要な場合は、AIとの会話へ値を貼らず、ローカル設定画面を使います。
+
+```bash
+xangi settings
+```
+
+xangiのインストール、対応AI、サービス起動、各チャット連携の最新手順は [xangi](https://github.com/karaage0703/xangi) のREADMEと同梱ドキュメントを正本として参照してください。このワークスペースは、AIの人格・記憶・スキル・ユーザーデータを管理し、xangi本体の起動手順やsecret値は管理しません。
 
 ## ディレクトリ構成
 

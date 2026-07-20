@@ -66,6 +66,8 @@ bash [SKILL_DIR]/scripts/check_agents.sh --no-smoke
 
 例:
 
+以下はLinux / WSLの例。`setsid` がないmacOSではlaunchdなどservice managerを使う。
+
 ```bash
 CONFIG_PATH="$(bash skills/xs-multi-agent/scripts/check_agents.sh)"
 cat "$CONFIG_PATH"
@@ -143,9 +145,32 @@ AIアシスタントのセッションは turn-based。外部AIプロセスを�
 
 並列に大規模分析させる場合は、turn を跨ぐ前提で組む。
 
-1. `nohup ... > /tmp/agent_out.txt 2>&1 &` で起動
-2. xangi環境なら、同じ turn で `xangi-cmd schedule_add` または `xangi-cmd trigger` を設定する
-3. ログパス、復帰方法、確認コマンドをユーザーに伝える
+1. `setsid bash -lc` で親process groupから分離し、PID・ログ・終了コードを保存する
+2. 開始報告前に `ps` で別SID/PGIDと生存を確認する
+3. xangi環境なら、子プロセスが終了状態を保存した後に `xangi-cmd trigger` を呼ぶ。定刻確認なら `schedule_add` を使う
+4. ログパス、復帰方法、確認コマンドをユーザーに伝える
+
+例:
+
+```bash
+AGENT_STATE_DIR="$(mktemp -d)"
+setsid bash -lc '
+  state_dir="$1"
+  agent="$2"
+  prompt_file="$3"
+  workspace="$4"
+  echo $$ > "$state_dir/pid"
+  bash skills/xs-multi-agent/scripts/run_agent.sh "$agent" "$prompt_file" "$workspace" > "$state_dir/output.log" 2>&1
+  rc=$?
+  echo "$rc" > "$state_dir/exit"
+  # xangiでは終了状態保存後に xangi-cmd trigger を呼ぶ
+  exit "$rc"
+' bash "$AGENT_STATE_DIR" codex /tmp/multi-agent-prompt.txt "$PWD" >/dev/null 2>&1 &
+
+sleep 2
+ps -o pid,ppid,sid,pgid,stat,etime,cmd -p "$(cat "$AGENT_STATE_DIR/pid")"
+echo "State: $AGENT_STATE_DIR"
+```
 
 「結果が来たら統合します」と書くなら、schedule / trigger / ユーザーへの明示的なハンドオフのどれかを必ず作る。
 
