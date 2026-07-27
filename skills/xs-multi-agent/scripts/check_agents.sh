@@ -38,6 +38,9 @@ json_escape() {
   local s="${1-}"
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
+  s="${s//$'\033'/\\u001b}"
+  s="${s//$'\b'/\\b}"
+  s="${s//$'\f'/\\f}"
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   s="${s//$'\t'/\\t}"
@@ -88,6 +91,7 @@ agent_json() {
   local scope="${11:-persistent_cli}"
   local volatile="${12:-false}"
   local include_in_sets="${13:-true}"
+  local provider_family="${14:-unknown}"
 
   if [[ "$include_in_sets" == true && "$ready" == true ]]; then
     append_json_string READY_AGENTS "$id"
@@ -107,6 +111,7 @@ agent_json() {
       "version": "$(json_escape "$version")",
       "invocation": "$(json_escape "$invocation")",
       "status": "$(json_escape "$status")",
+      "provider_family": "$(json_escape "$provider_family")",
       "scope": "$(json_escape "$scope")",
       "volatile": $volatile,
       "notes": "$(json_escape "$notes")"
@@ -117,13 +122,23 @@ EOF
 smoke_agent() {
   local id="$1"
   local prompt_file
+  local smoke_workspace
   prompt_file="$(mktemp)"
-  printf 'ワークスペース %s の skills/xs-multi-agent/SKILL.md を読んで、最初に必ず実行するコマンド名だけを1行で返してください。読めない場合は FAIL と返してください。\n' "$WORKSPACE" > "$prompt_file"
+  smoke_workspace="$(mktemp -d)"
+  mkdir -p "$smoke_workspace/skills/xs-multi-agent"
+  cp "$SCRIPT_DIR/../SKILL.md" "$smoke_workspace/skills/xs-multi-agent/SKILL.md"
+  local smoke_token
+  smoke_token="CHECK_AGENTS_$(od -An -N16 -tx1 /dev/urandom | tr -d '[:space:]')"
+  printf '%s\n' "$smoke_token" > "$smoke_workspace/skills/xs-multi-agent/.smoke-token"
+  printf 'ワークスペース内の skills/xs-multi-agent/.smoke-token を読み、その内容だけを1行で返してください。読めない場合は FAIL と返してください。\n' > "$prompt_file"
   local output
   local rc=0
-  output="$(timeout 60s "$SCRIPT_DIR/run_agent.sh" "$id" "$prompt_file" "$WORKSPACE" 2>&1)" || rc=$?
+  output="$(timeout 60s "$SCRIPT_DIR/run_agent.sh" "$id" "$prompt_file" "$smoke_workspace" 2>&1)" || rc=$?
   rm -f "$prompt_file"
-  if [[ "$rc" -eq 0 && "$output" == *"check_agents.sh"* ]]; then
+  rm -rf "$smoke_workspace"
+  local compact_output
+  compact_output="$(printf '%s' "$output" | tr -d '[:space:]')"
+  if [[ "$rc" -eq 0 && "$compact_output" == "$smoke_token" ]]; then
     printf 'ok'
   else
     output="$(printf '%s' "$output" | tail -5 | tr '\n' ' ' | cut -c 1-240)"
@@ -141,6 +156,7 @@ probe() {
   local status_if_found="$7"
   local notes_if_found="$8"
   local missing_notes="$9"
+  local provider_family="${10:-unknown}"
 
   local old_ifs="$IFS"
   IFS=','
@@ -168,9 +184,11 @@ probe() {
         notes="$notes Smoke probe failed: ${smoke#fail:}"
       fi
     fi
-    agent_json "$id" "$name" true "$ready" "$recommended" "$cmd_path" "$version" "$invocation" "$status" "$notes"
+    agent_json "$id" "$name" true "$ready" "$recommended" "$cmd_path" "$version" "$invocation" "$status" "$notes" \
+      "persistent_cli" false true "$provider_family"
   else
-    agent_json "$id" "$name" false false false "" "" "$invocation" "missing" "$missing_notes"
+    agent_json "$id" "$name" false false false "" "" "$invocation" "missing" "$missing_notes" \
+      "persistent_cli" false true "$provider_family"
   fi
 }
 
@@ -181,7 +199,7 @@ tmp="$(mktemp)"
 {
   cat <<EOF
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "generated_at": "$(json_escape "$generated_at")",
   "workspace": "$(json_escape "$WORKSPACE")",
   "state_dir": "$(json_escape "$STATE_DIR")",
@@ -203,42 +221,53 @@ EOF
     "Always available in the current turn only. Use as coordinator and final integrator, but do not persist as an external usable agent." \
     "current_turn" \
     true \
-    false
+    false \
+    "current-session"
 
   printf ',\n'
   probe "codex" "Codex CLI" "codex" "--version" true \
-    "codex exec --skip-git-repo-check --sandbox danger-full-access --cd <workspace> - < <prompt-file>" \
+    "codex exec --skip-git-repo-check --sandbox read-only --cd <workspace> - < <prompt-file>" \
     "available" \
     "Strong for code review, design, debugging, and implementation planning." \
-    "codex command not found"
+    "codex command not found" \
+    "openai"
 
   printf ',\n'
   probe "claude" "Claude Code" "claude" "--version" true \
-    "claude -p <prompt> --add-dir <workspace> [--bare] [--max-budget-usd <usd>]" \
+    "cd <target-workspace> && claude -p <prompt> --safe-mode --tools/--allowedTools Read,Glob,Grep,WebFetch,WebSearch --permission-mode dontAsk [--max-budget-usd <usd>]" \
     "available" \
     "Good for broad reasoning, writing, and code review. Watch quota and avoid recursive long jobs." \
-    "claude command not found"
+    "claude command not found" \
+    "anthropic"
 
   printf ',\n'
   probe "grok" "Grok CLI" "grok" "--version" true \
-    "grok -p <prompt> --cwd <workspace> --permission-mode plan --output-format plain" \
+    "grok -p <prompt> --cwd <workspace> --permission-mode plan --no-memory --no-subagents --tools Read,Glob,Grep,WebFetch,WebSearch --output-format plain" \
     "available" \
     "Useful as another coding/reasoning perspective. Prefer plan mode unless edits are explicitly delegated." \
-    "grok command not found"
+    "grok command not found" \
+    "xai"
 
   printf ',\n'
   probe "cursor" "Cursor Agent" "cursor-agent" "--version" true \
     "cursor-agent --print --mode=ask --workspace <workspace> <prompt>" \
     "available" \
     "Good for codebase Q&A and plan-mode review. Use ask/plan mode by default." \
-    "cursor-agent command not found"
+    "cursor-agent command not found" \
+    "unknown"
 
   printf ',\n'
+  antigravity_model="${MULTI_AGENT_ANTIGRAVITY_MODEL:-gemini-3.1-pro-low}"
+  antigravity_family="unknown"
+  if [[ "$antigravity_model" == gemini-* ]]; then
+    antigravity_family="google"
+  fi
   probe "antigravity" "Antigravity CLI" "agy,antigravity" "--version" true \
-    "agy -p <prompt> --model <model> --conversation <id>" \
+    "agy -p <prompt> --model ${antigravity_model} --mode plan --sandbox" \
     "available" \
     "Use when smoke probe passes. Empty stdout and quota errors are treated as failures." \
-    "agy/antigravity command not found"
+    "agy/antigravity command not found" \
+    "$antigravity_family"
 
   cat <<EOF
   ],
@@ -247,6 +276,12 @@ EOF
 }
 EOF
 } > "$tmp"
+
+if ! jq empty "$tmp" >/dev/null 2>&1; then
+  printf 'generated agents config is invalid JSON; refusing to replace %s\n' "$CONFIG_PATH" >&2
+  rm -f "$tmp"
+  exit 70
+fi
 
 mv "$tmp" "$CONFIG_PATH"
 printf '%s\n' "$CONFIG_PATH"

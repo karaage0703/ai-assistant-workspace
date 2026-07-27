@@ -7,7 +7,7 @@ set -uo pipefail
 # WORKSPACE はリポジトリのルートを指す。
 # 環境変数 WORKSPACE_PATH があれば優先、なければスクリプト位置から推定。
 WORKSPACE="${WORKSPACE_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-SCRIPT_DIR="${WORKSPACE}/skills/xs-workspace-rag/scripts"
+RAG_SCRIPT_DIR="${WORKSPACE}/skills/xs-workspace-rag/scripts"
 PORT="${WORKSPACE_RAG_PORT:-7890}"
 RUNTIME_DIR="${WORKSPACE}/.workspace_rag"
 PID_FILE="${RUNTIME_DIR}/server.pid"
@@ -18,8 +18,36 @@ INDEX_EXIT_FILE="${RUNTIME_DIR}/index.exit"
 
 mkdir -p "${RUNTIME_DIR}"
 
+get_health() {
+  curl -fsS --connect-timeout 1 --max-time 3 \
+    "http://127.0.0.1:${PORT}/health" 2>/dev/null
+}
+
+is_valid_health() {
+  python3 -c '
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+except (json.JSONDecodeError, TypeError):
+    raise SystemExit(1)
+
+raise SystemExit(
+    0
+    if isinstance(data, dict)
+    and data.get("status") == "ok"
+    and data.get("service") == "workspace-rag"
+    and data.get("api_version") == 1
+    else 1
+)
+' >/dev/null 2>&1
+}
+
 is_running() {
-  curl -s --max-time 2 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1
+  local health
+  health="$(get_health)" || return 1
+  is_valid_health <<< "$health"
 }
 
 start_server() {
@@ -27,11 +55,11 @@ start_server() {
     echo "RAGサーバーはすでに起動中です（port ${PORT}）"
     return 0
   fi
-  if [ ! -d "$SCRIPT_DIR" ]; then
-    echo "workspace-ragスキルが見つかりません: $SCRIPT_DIR"
+  if [ ! -d "$RAG_SCRIPT_DIR" ]; then
+    echo "workspace-ragスキルが見つかりません: $RAG_SCRIPT_DIR"
     return 1
   fi
-  cd "$SCRIPT_DIR" || return 1
+  cd "$RAG_SCRIPT_DIR" || return 1
   if command -v setsid >/dev/null 2>&1; then
     setsid uv run python workspace_rag_server.py -w "$WORKSPACE" -p "$PORT" \
       >> "$LOG_FILE" 2>&1 < /dev/null &
@@ -56,8 +84,8 @@ start_index() {
     echo "インデックス作成はすでに実行中です。進捗: tail -f $INDEX_LOG"
     return 0
   fi
-  if [ ! -d "$SCRIPT_DIR" ]; then
-    echo "workspace-ragスキルが見つかりません: $SCRIPT_DIR"
+  if [ ! -d "$RAG_SCRIPT_DIR" ]; then
+    echo "workspace-ragスキルが見つかりません: $RAG_SCRIPT_DIR"
     return 1
   fi
   rm -f "$INDEX_EXIT_FILE"
@@ -76,7 +104,7 @@ start_index() {
     rc=$?
     echo "$rc" > "$exit_file"
     exit "$rc"
-  ' bash "$SCRIPT_DIR" "$WORKSPACE" "$INDEX_LOG" "$INDEX_EXIT_FILE" >/dev/null 2>&1 < /dev/null &
+  ' bash "$RAG_SCRIPT_DIR" "$WORKSPACE" "$INDEX_LOG" "$INDEX_EXIT_FILE" >/dev/null 2>&1 < /dev/null &
   echo $! > "$INDEX_PID_FILE"
   sleep 1
   if ! kill -0 "$(cat "$INDEX_PID_FILE")" 2>/dev/null && [ ! -f "$INDEX_EXIT_FILE" ]; then
@@ -93,12 +121,16 @@ start_index() {
 }
 
 health_check() {
-  if is_running; then
-    curl -s --max-time 5 "http://127.0.0.1:${PORT}/health" 2>/dev/null \
-      || echo "ヘルスチェックの取得に失敗しました"
-  else
+  local health
+  health="$(get_health)" || {
     echo "RAGサーバーは起動していません（port ${PORT}）。\`bash triggers/rag/handler.sh start\` で起動してください"
+    return 1
+  }
+  if ! is_valid_health <<< "$health"; then
+    echo "port ${PORT}の応答はworkspace-RAGサーバーではありません"
+    return 1
   fi
+  printf '%s\n' "$health"
 }
 
 do_search() {

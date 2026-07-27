@@ -46,9 +46,10 @@ class SearchFreshnessTest(unittest.TestCase):
             patch("workspace_rag.get_path_weight", return_value=1.0),
             patch("workspace_rag.get_freshness_score", return_value=0.25),
         ):
-            return server.do_search(
+            results, _query_embedding, _degraded_reason = server.do_search(
                 "old content", mode="keyword", forgetting=forgetting
-            )[0]
+            )
+            return results[0]
 
     def test_forgetting_off_ignores_freshness(self):
         result = self.search(forgetting=False)

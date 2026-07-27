@@ -1,26 +1,32 @@
 # Workspace RAG
 
+workspace-RAGは任意機能です。利用したい場合だけ、このREADMEの手順で依存導入、index作成、サーバー起動を行ってください。初期状態では自動的に起動確認や検索を行いません。
+
 ワークスペース全体をベクトル検索＋構造化ファクト管理する軽量パーソナルRAG。port 7890 で常駐し、ベクトル/FTS5 ハイブリッド検索とファクト CRUD・忘却曲線を 1 サーバーで提供する。
 
 詳細な解説記事: [Skillsで実現する軽量パーソナルRAG](https://zenn.dev/karaage0703/articles/d7eaf62437185d)
 
 ## 特徴
 
-- **SQLite + numpy** — PostgreSQL不要、ファイル1つでDB管理
+- **SQLite + Faiss** — PostgreSQL不要。ベクトルはFaiss完全検索を使い、利用できない環境ではNumPyへ自動縮退
 - **multilingual-e5-small** — 384次元、日英対応の埋め込みモデル（約500MB）
-- **差分インデックス** — ファイルハッシュで変更検出、未変更ファイルはスキップ
-- **ハイブリッド検索** — ベクトル検索(0.7) + FTS5 trigram キーワード検索(0.3、日本語固有名詞OK)
+- **差分インデックス** — ファイルハッシュで変更検出。追記型ログは変更末尾だけ再埋め込み
+- **ハイブリッド検索** — ベクトル検索(0.7) + FTS5 trigram キーワード検索(0.3、日本語固有名詞OK)。FaissがなければNumPyへ自動フォールバック
 - **R²AG簡易版** — 検索結果に関連度スコアを付与（EMNLP 2024論文のアイデアを簡易実装）
 - **構造化ファクト** — `/facts` 系 API で ADD/UPDATE/DELETE。`/search` にも相乗りで返る
 - **忘却曲線オプション** — `?forgetting=on` のときだけ MemoryBank 式 decay を適用（**デフォルト OFF**）。NO_DECAY 系（`AGENTS.md/CLAUDE.md/MEMORY.md` と `knowledge/`）以外の全フォルダが対象
 - **常駐HTTPサーバー** — 起動後は約70msで検索（CLI版は毎回モデルロードで約9秒）
 - **自動reindex** — サーバーが30分ごとに差分インデックス＋キャッシュ更新（デフォルトON）
+- **並行リクエスト** — reindex中も既存キャッシュで検索でき、query encoderが混雑した時はkeyword検索へ縮退
 
 ## クイックスタート
 
 ```bash
 cd skills/xs-workspace-rag/scripts
 uv sync
+
+# 大規模インデックス向けにFaissを追加する場合（任意）
+uv sync --extra faiss
 
 # インデックス作成（初回）
 uv run python workspace_rag.py index -w /path/to/workspace
@@ -99,6 +105,8 @@ curl -s "http://127.0.0.1:7890/health"
 ```json
 {
   "status": "ok",
+  "service": "workspace-rag",
+  "api_version": 1,
   "workspace": "/home/user/ai-assistant-workspace",
   "workspace_name": "ai-assistant-workspace",
   "chunks_cached": 1234,
@@ -107,15 +115,20 @@ curl -s "http://127.0.0.1:7890/health"
   "facts_cached": 12,
   "db_size_mb": 15.3,
   "port": 7890,
+  "vector_backend": "faiss",
+  "vector_index_size": 1234,
   "auto_reindex": true,
   "reindex_count": 5,
-  "last_reindex": "2026-05-17T07:30:00+00:00"
+  "last_reindex": "2026-05-17T07:30:00+00:00",
+  "reindex_in_progress": false,
+  "last_reindex_duration_ms": 842,
+  "last_reindex_error": null
 }
 ```
 
 ### POST /reindex
 
-手動でインデックス更新＋キャッシュ再読み込み。
+手動でインデックス更新＋キャッシュ再読み込み。HTTP 202をすぐ返し、処理はバックグラウンドで進む。完了は`GET /health`の`reindex_in_progress=false`と`last_reindex_error=null`で確認する。
 
 ```bash
 curl -s -X POST "http://127.0.0.1:7890/reindex"
@@ -163,18 +176,18 @@ uv run python workspace_rag_server.py -w /path/to/workspace -p 7890 [OPTIONS]
 ワークスペース内のファイル（.md, .py, .ts, .json, etc.）
   ↓ index（差分検出 + チャンク分割 + 埋め込み生成）
 SQLite DB（チャンク + 埋め込みベクトル + FTS5 trigram + facts テーブル）
-  ↓ search（クエリ埋め込み → コサイン類似度 + FTS5スコア + path_weight。forgetting=on のときだけ freshness × decay）
+  ↓ search（クエリ埋め込み → Faiss完全検索 + FTS5スコア + path_weight。forgetting=on のときだけ freshness × decay）
 検索結果（関連度スコア付き）+ ファクト相乗り
 ```
 
 **常駐サーバー版の動作:**
 ```
 サーバープロセス（常駐、pm2 / systemd user service）
-  ├── メインスレッド: HTTPリクエスト受付
-  │   ├── /search   → メモリ上の埋め込み行列でコサイン類似度計算（約70ms）
+  ├── ThreadingHTTPServer: HTTPリクエストを並行受付
+  │   ├── /search   → Faiss完全検索。encoder混雑時はkeywordへ縮退
   │   ├── /facts*   → ファクト CRUD + 類似検索
   │   ├── /health   → ステータス + インデックス統計
-  │   └── /reindex  → 差分インデックス + キャッシュ再読み込み
+  │   └── /reindex  → HTTP 202後、別スレッドで差分index + キャッシュ再読み込み
   └── 自動reindexスレッド（daemon）: 30分ごとに差分インデックス + キャッシュ更新
 ```
 
@@ -188,6 +201,7 @@ SQLite DB（チャンク + 埋め込みベクトル + FTS5 trigram + facts テ�
 | DB | SQLite（単一ファイル、`.workspace_rag/` に保存） |
 | FTS5 | trigram tokenizer（日本語の固有名詞・漢字熟語対応） |
 | 検索速度 | 約70ms（サーバー版）/ 約9秒（CLI版） |
+| ベクトルbackend | Faiss IndexFlatIP（利用不可時はNumPy） |
 | メモリ使用量 | 約900MB（モデル400MB + 埋め込みキャッシュ + ファクトキャッシュ） |
 | 忘却曲線 | MemoryBank 式（半減期30日、access_count で延長）。`?forgetting=on` のみ |
 

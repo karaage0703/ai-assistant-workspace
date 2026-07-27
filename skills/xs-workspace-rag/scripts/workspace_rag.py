@@ -82,6 +82,9 @@ DEFAULT_EXCLUDE_PATTERNS = [
     r"\.min\.js$",
     r"\.bundle\.js$",
     r"\.js$",
+    # rag_facts.md は facts スナップショットの自動生成物。chunk index に入れると
+    # /search で facts 本体と二重ヒットするので除外（facts は /facts で検索可）。
+    r"^knowledge/rag_facts\.md$",
 ]
 
 # ファイルサイズ上限（バンドル済みJS等を排除）
@@ -235,6 +238,61 @@ def get_file_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
+def update_file_chunks(
+    conn: sqlite3.Connection,
+    workspace_name: str,
+    rel_path: str,
+    content: str,
+    file_hash: str,
+    force: bool = False,
+) -> int:
+    """変更地点より前のチャンクと埋め込みを保持し、差分だけ挿入する。"""
+    new_chunks = chunk_text(content)
+    existing_rows = conn.execute(
+        """SELECT chunk_index, content
+           FROM chunks
+           WHERE workspace = ? AND file_path = ?
+           ORDER BY chunk_index""",
+        (workspace_name, rel_path),
+    ).fetchall()
+
+    common_prefix = 0
+    if not force:
+        for (_, old_content), new_content in zip(existing_rows, new_chunks):
+            if old_content != new_content:
+                break
+            common_prefix += 1
+
+    conn.execute(
+        """DELETE FROM chunks
+           WHERE workspace = ? AND file_path = ? AND chunk_index >= ?""",
+        (workspace_name, rel_path, common_prefix),
+    )
+
+    # 保持したチャンクも最新ファイルhashへ揃え、次回の未変更判定を有効にする。
+    if common_prefix:
+        conn.execute(
+            """UPDATE chunks SET file_hash = ?
+               WHERE workspace = ? AND file_path = ? AND chunk_index < ?""",
+            (file_hash, workspace_name, rel_path, common_prefix),
+        )
+
+    for chunk_index in range(common_prefix, len(new_chunks)):
+        conn.execute(
+            """INSERT INTO chunks (workspace, file_path, chunk_index, content, file_hash)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                workspace_name,
+                rel_path,
+                chunk_index,
+                new_chunks[chunk_index],
+                file_hash,
+            ),
+        )
+
+    return len(new_chunks) - common_prefix
+
+
 def collect_files(workspace: str, exclude_patterns: list[str] = None, include_extensions: set[str] = None):
     """対象ファイルを収集（ジェネレータ版 - メモリ節約）"""
     workspace_path = Path(workspace).resolve()
@@ -335,21 +393,14 @@ def index_workspace(workspace: str, force: bool = False) -> None:
             skipped_files += 1
             continue
 
-        # 既存のチャンクを削除
-        conn.execute(
-            "DELETE FROM chunks WHERE workspace = ? AND file_path = ?",
-            (workspace_name, rel_path)
+        total_new_chunks += update_file_chunks(
+            conn,
+            workspace_name,
+            rel_path,
+            content,
+            file_hash,
+            force=force,
         )
-
-        chunks = chunk_text(content)
-
-        for i, chunk in enumerate(chunks):
-            conn.execute(
-                """INSERT INTO chunks (workspace, file_path, chunk_index, content, file_hash)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (workspace_name, rel_path, i, chunk, file_hash)
-            )
-            total_new_chunks += 1
 
         # 定期的にコミット
         if file_count % COMMIT_INTERVAL == 0:
