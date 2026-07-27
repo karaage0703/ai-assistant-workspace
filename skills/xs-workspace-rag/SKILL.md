@@ -1,6 +1,6 @@
 ---
 name: xs-workspace-rag
-description: ワークスペース全体をベクトル検索＋構造化ファクト管理する常駐サーバー（port 7890、約70ms）。会話で過去の記憶を参照する必要がある時、ファクトを ADD/UPDATE/DELETE する時、両方ともこのスキルを使う。「前に話した」「あの時の」「ワークスペース検索して」「RAGで探して」「ファクト登録」で使用。
+description: ワークスペース全体をベクトル検索＋構造化ファクト管理する任意スキル。ユーザーがRAGのセットアップ・検索・ファクト操作を明示的に依頼した場合に使う。「RAGをセットアップして」「RAGで探して」「ファクト登録」で使用。
 ---
 
 # Workspace RAG
@@ -9,27 +9,19 @@ description: ワークスペース全体をベクトル検索＋構造化ファ�
 
 ## 特徴
 
-- **軽量**: SQLite + numpy（PostgreSQL不要、単一ファイルDB）
+- **軽量**: SQLite + Faiss（PostgreSQL不要。Faiss利用不可時はNumPyへ縮退）
 - **マルチフォーマット**: md, txt, py, js, json, yaml, csv 等
-- **差分インデックス**: ファイルハッシュで変更検出、未変更ファイルはスキップ
+- **差分インデックス**: ファイルハッシュで変更検出。追記型ログは変更末尾だけ再埋め込み
 - **R²AG簡易版**: 検索結果に関連度スコアを付与し、LLMが重要度を判断しやすくする
 - **構造化ファクト**: `/facts` 系 API で ADD/UPDATE/DELETE。`/search` にも相乗りで返る
 - **忘却曲線オプション**: `?forgetting=on` のときだけ MemoryBank 式 decay を適用（**デフォルト OFF**）。NO_DECAY 系（`AGENTS.md/CLAUDE.md/MEMORY.md`）以外は全フォルダ対象。新しい記事を上に出したい時のみ ON
 - **trigram FTS5**: 日本語の固有名詞検索に強い（漢字熟語も拾う）
 - **OOM対策**: バッチ処理・定期的なDB再接続でメモリ使用量を抑制
+- **並行検索**: reindex中も既存キャッシュで検索。query encoder混雑時はkeywordへ縮退
 
-## 運用原則
+## 利用条件
 
-workspace-RAG は「過去のローカル文脈を取りこぼさない」ための道具。以下の場面では優先して使う。
-
-- 「前に話した」「以前」「あの時」「過去のメモ」など、過去文脈が必要な依頼
-- 健康、売上、作業時間、実測値など、記録に基づいて答えるべき依頼
-- Web検索、GitHub、RSS、外部APIで新しい情報を取った後のローカル照合
-- 似たファクトがあるか確認してから ADD / UPDATE / DELETE したい時
-
-外部情報だけで十分そうに見えても、同じ話題でローカル検索を一度挟むと、過去の検証結果・実測値・判断の取りこぼしが減る。
-
-検索結果が0件、スコアが低い、サーバーが応答しないなどの違和感がある場合は、クエリ変更・`rg`・関連ファイルの直接確認に切り替え、最終報告にその経緯を短く書く。
+このスキルは、ユーザーがRAGの導入または利用を明示した場合だけ使う。通常の会話や開発作業では、サーバーの確認・起動・検索を自動実行しない。
 
 ## スキル構成
 
@@ -50,6 +42,9 @@ workspace-RAG は「過去のローカル文脈を取りこぼさない」ため
 ```bash
 cd [SKILL_DIR]/scripts
 uv sync
+
+# 大規模インデックス向けのFaissは任意
+uv sync --extra faiss
 ```
 
 ### Step 2: インデックス作成
@@ -123,7 +118,7 @@ tail "$RAG_STATE_DIR/index.log"
 
 ### Step 3: 検索（常駐サーバー経由 — 推奨）
 
-常駐HTTPサーバーが起動中なら、curlで高速検索できる（約100ms）。
+常駐HTTPサーバーが起動中なら、curlで高速検索できる。ベクトル検索はFaiss `IndexFlatIP`の完全検索を使い、`/health`の`vector_backend`で実際のbackendを確認できる。
 
 **重要: 日本語クエリは URL エンコードが必要。** `curl -G --data-urlencode` を使うこと（直書きは Bad request 400 になる）。
 
@@ -146,14 +141,23 @@ curl -s -G "http://127.0.0.1:7890/search" --data-urlencode "q=検索クエリ" -
 # ヘルスチェック
 curl -s "http://127.0.0.1:7890/health"
 
-# インデックス更新
+# インデックス更新（HTTP 202を返し、バックグラウンドで処理）
 curl -s -X POST "http://127.0.0.1:7890/reindex"
+
+# 完了確認
+curl -s "http://127.0.0.1:7890/health"
 ```
+
+`POST /reindex`の202は受付完了であり、再索引完了ではない。必要な場合は`reindex_in_progress=false`かつ`last_reindex_error=null`を確認する。再索引中も既存キャッシュで検索できる。
+
+query encoderを短時間で取得できない場合はHTTP待ち行列を伸ばさずkeyword検索へ縮退し、レスポンスへ`degraded: true`と`degraded_reason: "query_encoder_busy"`を付ける。RAG停止とは区別する。
+
+`RAG_VECTOR_BACKEND=numpy`を設定するとベクトルbackendをNumPyへ切り替えられる。Faissのimportまたはindex構築に失敗した場合も自動でNumPyへ縮退する。
 
 **検索モード:**
 - **hybrid**（デフォルト）: ベクトル(0.7) + FTS5(0.3) の統合スコア。汎用
 - **vector**: ベクトル検索のみ。日本語の意味検索に最適
-- **keyword**: FTS5 trigramのみ。英語キーワード・コード検索に最適（超高速、約10ms）
+- **keyword**: FTS5 trigramのみ。英語キーワード・コード検索に最適
 
 **忘却曲線オプション (`?forgetting=on`)** — デフォルト OFF：
 ```bash
@@ -274,9 +278,6 @@ uv run python workspace_rag.py search -w [WORKSPACE] -q "検索クエリ" --json
 2. 固有名詞を2〜3個の短いクエリへ分解する
    - 例: `施設名` / `人名 施設名` / `イベント名`
 3. パスや本文に対象語が直接含まれる結果は、スコアが低くてもファイルを開く
-4. 「記録なし」「直接一致なし」と回答する前に、`xs-agentic-memory-search` の
-   `helper.sh grep` で表記揺れを含む2〜3語を検索する
-
 RAGが結果を返しているのに採用しなかった場合は「RAGでヒットしなかった」と表現せず、
 「結果に出ていたが読み落とした」と区別して報告する。
 

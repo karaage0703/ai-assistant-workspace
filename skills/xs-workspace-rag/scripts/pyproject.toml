@@ -9,5 +9,8 @@ dependencies = [
     "torch>=2.0.0",
 ]
 
+[project.optional-dependencies]
+faiss = ["faiss-cpu==1.14.3"]
+
 [project.scripts]
 workspace-rag = "workspace_rag:main"

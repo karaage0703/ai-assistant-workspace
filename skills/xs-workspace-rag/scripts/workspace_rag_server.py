@@ -2,7 +2,7 @@
 """
 Workspace RAG Server - 常駐HTTPサーバー版（facts CRUD + 忘却曲線オプション統合）
 
-特徴:
+Features:
 - facts CRUD: GET/POST /facts, GET /facts/similar, PUT/DELETE /facts/{id}
 - 忘却曲線: ?forgetting=on のときのみ memory/notes/knowledge 配下に decay 適用 (default OFF)
 
@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+from collections import OrderedDict
 import hashlib
 import json
 import math
@@ -28,7 +29,7 @@ import sys
 import threading
 import time
 from datetime import datetime, date
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse, parse_qs
@@ -37,6 +38,10 @@ import torch
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+try:
+    import faiss
+except ImportError:
+    faiss = None
 
 # ----------------------------------------------------------------------------
 # Rotating log (stderr -> server.log にローテーション付きで永続化)
@@ -128,7 +133,7 @@ DEFAULT_PORT = 7890
 VECTOR_WEIGHT = 0.7
 FTS_WEIGHT = 0.3
 
-# 忘却曲線（MemoryBank式）
+# 忘却曲線（MemoryBank式をワークスペース検索向けに調整）
 # R = 2^(-t / S) where S = BASE_HALF_LIFE * (1 + access_count * STRENGTH_PER_ACCESS)
 BASE_HALF_LIFE = 30
 STRENGTH_PER_ACCESS = 0.5
@@ -142,6 +147,11 @@ DATE_PATTERN = re.compile(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})")
 _auto_reindex_enabled = True
 _last_reindex_time = 0
 _reindex_count = 0
+_reindex_in_progress = False
+_reindex_source = None
+_reindex_started_at = 0
+_last_reindex_duration_ms = None
+_last_reindex_error = None
 
 # グローバル（サーバー内で共有）
 _model = None
@@ -151,24 +161,104 @@ _workspace_name = None
 _db_path = None
 _embedding_ids = None       # np.ndarray (N,) int64
 _embedding_matrix = None    # np.ndarray (N, 384) float32
+_vector_index = None        # faiss.IndexFlatIP or None
+_vector_backend = "numpy"
 _fact_embeddings = None     # list[(id, np.ndarray)]
+
+# SentenceTransformer.encode() を複数HTTPスレッドから同時実行すると、CPU推論が
+# 競合して全リクエストがタイムアウトすることがある。同一クエリの再試行は
+# キャッシュで吸収し、推論中に来た別リクエストは短時間だけ待ってから
+# keyword-only に縮退させる。
+_query_encode_lock = threading.Lock()
+_query_cache_lock = threading.Lock()
+_fact_embeddings_lock = threading.RLock()
+_query_embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
+QUERY_EMBEDDING_CACHE_SIZE = 128
+QUERY_ENCODE_WAIT_SECONDS = 2.0
 
 # auto-reindex スレッドと HTTP リクエスト処理の間で _conn を保護する。
 # RLock なので同一スレッドからのネスト acquire は OK。
 _conn_lock = threading.RLock()
+# 手動 /reindex と auto-reindex の多重実行を防ぐ。HTTP 自体は並行応答し、
+# reindex 中も /health と既存キャッシュへの /search を利用可能にする。
+_reindex_lock = threading.Lock()
+_reindex_state_lock = threading.Lock()
 
 
-def _swap_conn(new_conn: sqlite3.Connection):
-    """グローバル _conn を新しい接続に差し替え、古い接続は安全に閉じる。
+def _encode_query(
+    query: str,
+    wait_seconds: float = QUERY_ENCODE_WAIT_SECONDS,
+) -> Optional[np.ndarray]:
+    """クエリ埋め込みを直列生成する。busy時はNoneを返して呼び出し側を縮退させる。"""
+    with _query_cache_lock:
+        cached = _query_embedding_cache.get(query)
+        if cached is not None:
+            _query_embedding_cache.move_to_end(query)
+            return cached
 
-    パターン: 新規接続を先に作って差し替える → 「closed _conn が一瞬でも見える」
-    隙間をゼロにする。すでに _conn を握って execute 中の処理は古い接続を最後まで
-    使い切ってから close される。
-    """
-    global _conn
+    if not _query_encode_lock.acquire(timeout=wait_seconds):
+        return None
+
+    try:
+        # ロック待ち中に先行リクエストが生成済みか再確認する。
+        with _query_cache_lock:
+            cached = _query_embedding_cache.get(query)
+            if cached is not None:
+                _query_embedding_cache.move_to_end(query)
+                return cached
+
+        with torch.no_grad():
+            query_emb = _model.encode(
+                f"query: {query}", normalize_embeddings=True
+            ).astype(np.float32)
+
+        with _query_cache_lock:
+            _query_embedding_cache[query] = query_emb
+            _query_embedding_cache.move_to_end(query)
+            while len(_query_embedding_cache) > QUERY_EMBEDDING_CACHE_SIZE:
+                _query_embedding_cache.popitem(last=False)
+        return query_emb
+    finally:
+        _query_encode_lock.release()
+
+
+def _encode_passage(text: str) -> np.ndarray:
+    """fact更新用の埋め込みを、検索クエリと同じモデルロックで直列生成する。"""
+    with _query_encode_lock:
+        with torch.no_grad():
+            return _model.encode(
+                f"passage: {text}", normalize_embeddings=True
+            ).astype(np.float32)
+
+
+def _reload_db_and_caches():
+    """新しい接続でキャッシュを構築し、完成後に短いロックで一括交換する。"""
+    global _conn, _embedding_ids, _embedding_matrix, _vector_index
+    global _vector_backend, _fact_embeddings
+
+    new_conn = init_db(_db_path)
+    try:
+        new_embedding_ids, new_embedding_matrix = load_embeddings_cache(
+            new_conn, _workspace_name
+        )
+        new_vector_index, new_vector_backend = build_vector_index(
+            new_embedding_matrix
+        )
+        new_fact_embeddings = load_fact_embeddings(new_conn, _workspace_name)
+    except Exception:
+        new_conn.close()
+        raise
+
     with _conn_lock:
         old_conn = _conn
         _conn = new_conn
+        _embedding_ids = new_embedding_ids
+        _embedding_matrix = new_embedding_matrix
+        _vector_index = new_vector_index
+        _vector_backend = new_vector_backend
+    with _fact_embeddings_lock:
+        _fact_embeddings = new_fact_embeddings
+
     if old_conn is not None:
         try:
             old_conn.close()
@@ -176,27 +266,59 @@ def _swap_conn(new_conn: sqlite3.Connection):
             pass
 
 
-def _ensure_conn():
-    """_conn が壊れていたら作り直す。手動 /reindex 等のリカバリ手段としても使う。"""
-    global _conn
-    with _conn_lock:
-        try:
-            if _conn is not None:
-                _conn.execute("SELECT 1").fetchone()
-                return
-        except sqlite3.ProgrammingError:
-            pass
-        except Exception:
-            pass
-        # 壊れている or None → 作り直す
-        new_conn = init_db(_db_path)
-        old = _conn
-        _conn = new_conn
-    if old is not None:
-        try:
-            old.close()
-        except Exception:
-            pass
+def _run_reindex(
+    source: str,
+    lock_already_acquired: bool = False,
+    started_event: Optional[threading.Event] = None,
+) -> bool:
+    """reindexを1本だけ実行する。実行中は既存キャッシュを提供し続ける。"""
+    global _last_reindex_time, _reindex_count
+    global _reindex_in_progress, _reindex_source, _reindex_started_at
+    global _last_reindex_duration_ms, _last_reindex_error
+
+    if not lock_already_acquired and not _reindex_lock.acquire(blocking=False):
+        return False
+
+    started_at = time.time()
+    with _reindex_state_lock:
+        _reindex_in_progress = True
+        _reindex_source = source
+        _reindex_started_at = started_at
+        _last_reindex_error = None
+    if started_event is not None:
+        started_event.set()
+
+    try:
+        from workspace_rag import index_workspace
+
+        print(f"[{source}-reindex] Starting...", file=sys.stderr, flush=True)
+        index_workspace(_workspace, force=False)
+        _reload_db_and_caches()
+
+        duration_ms = round((time.time() - started_at) * 1000, 1)
+        with _reindex_state_lock:
+            _last_reindex_time = time.time()
+            _reindex_count += 1
+            _last_reindex_duration_ms = duration_ms
+        print(
+            f"[{source}-reindex] Done in {duration_ms}ms. "
+            f"{len(_embedding_ids)} chunks / {len(_fact_embeddings)} facts cached. "
+            f"(count={_reindex_count})",
+            file=sys.stderr,
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        with _reindex_state_lock:
+            _last_reindex_error = str(exc)
+        print(f"[{source}-reindex] Error: {exc}", file=sys.stderr, flush=True)
+        return True
+    finally:
+        with _reindex_state_lock:
+            _reindex_in_progress = False
+            _reindex_source = None
+            _reindex_started_at = 0
+        _reindex_lock.release()
 
 
 # ----------------------------------------------------------------------------
@@ -279,6 +401,19 @@ def ensure_fts(conn: sqlite3.Connection):
 
 
 def populate_fts(conn: sqlite3.Connection, workspace_name: str):
+    chunk_count = conn.execute(
+        "SELECT COUNT(*) FROM chunks WHERE workspace = ?",
+        (workspace_name,)
+    ).fetchone()[0]
+    try:
+        fts_count = conn.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0]
+    except sqlite3.OperationalError:
+        fts_count = 0
+
+    if chunk_count > 0 and fts_count == chunk_count:
+        print(f"FTS5 index already populated ({fts_count} chunks); skipping rebuild", file=sys.stderr, flush=True)
+        return
+
     print("Building FTS5 index (rebuild)...", file=sys.stderr, flush=True)
     t0 = time.time()
     conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
@@ -289,7 +424,8 @@ def populate_fts(conn: sqlite3.Connection, workspace_name: str):
 
 def load_embeddings_cache(conn: sqlite3.Connection, workspace_name: str):
     rows = conn.execute(
-        "SELECT id, embedding FROM chunks WHERE workspace = ? AND embedding IS NOT NULL",
+        "SELECT id, embedding FROM chunks "
+        "WHERE workspace = ? AND embedding IS NOT NULL ORDER BY id",
         (workspace_name,)
     ).fetchall()
 
@@ -302,6 +438,82 @@ def load_embeddings_cache(conn: sqlite3.Connection, workspace_name: str):
         for r in rows
     ])
     return ids, vecs
+
+
+def build_vector_index(matrix: np.ndarray):
+    """完全一致のFaiss IP indexを構築。利用不能ならNumPyへ戻す。"""
+    requested = os.environ.get("RAG_VECTOR_BACKEND", "faiss").lower()
+    if requested != "faiss" or faiss is None or len(matrix) == 0:
+        return None, "numpy"
+    try:
+        index = faiss.IndexFlatIP(matrix.shape[1])
+        index.add(np.ascontiguousarray(matrix, dtype=np.float32))
+        return index, "faiss"
+    except Exception as exc:
+        print(f"[vector] Faiss unavailable; using NumPy: {exc}", file=sys.stderr)
+        return None, "numpy"
+
+
+def vector_top_candidates(
+    query_emb: np.ndarray,
+    top_n: int,
+    min_score: float,
+    ids: np.ndarray,
+    matrix: np.ndarray,
+    index,
+) -> dict[int, float]:
+    """完全一致の上位候補だけをPythonへ戻す。全42万件のdict化を避ける。"""
+    count = min(top_n, len(ids))
+    if count <= 0:
+        return {}
+
+    if index is not None:
+        distances, positions = index.search(
+            np.ascontiguousarray(query_emb.reshape(1, -1), dtype=np.float32),
+            count,
+        )
+        positions = positions[0]
+        distances = distances[0]
+    else:
+        scores = matrix @ query_emb
+        if count == len(scores):
+            positions = np.arange(len(scores))
+        else:
+            positions = np.argpartition(scores, -count)[-count:]
+        distances = scores[positions]
+        order = np.argsort(distances)[::-1]
+        positions = positions[order]
+        distances = distances[order]
+
+    return {
+        int(ids[position]): float(score)
+        for position, score in zip(positions, distances)
+        if position >= 0 and score >= min_score
+    }
+
+
+def add_exact_scores_for_fts(
+    vector_scores: dict[int, float],
+    fts_scores: dict[int, float],
+    query_emb: np.ndarray,
+    ids: np.ndarray,
+    matrix: np.ndarray,
+) -> None:
+    """FTS候補のベクトル値を正確に補い、従来hybrid順位を維持する。"""
+    missing = sorted(set(fts_scores) - set(vector_scores))
+    if not missing or len(ids) == 0:
+        return
+    missing_ids = np.asarray(missing, dtype=np.int64)
+    positions = np.searchsorted(ids, missing_ids)
+    valid = positions < len(ids)
+    valid &= ids[np.minimum(positions, len(ids) - 1)] == missing_ids
+    if not np.any(valid):
+        return
+    valid_ids = missing_ids[valid]
+    valid_positions = positions[valid]
+    scores = matrix[valid_positions] @ query_emb
+    for chunk_id, score in zip(valid_ids, scores):
+        vector_scores[int(chunk_id)] = float(score)
 
 
 def load_fact_embeddings(conn: sqlite3.Connection, workspace_name: str) -> list[tuple[int, np.ndarray]]:
@@ -332,7 +544,7 @@ def extract_file_date(file_path: str) -> Optional[date]:
 
 def memory_decay(file_date: Optional[date], file_path: str,
                  access_count: int = 0, last_accessed: Optional[str] = None) -> float:
-    """忘却曲線（MemoryBank式）
+    """忘却曲線（MemoryBank式をワークスペース検索向けに調整）
     R = 2^(-t / S)
     NO_DECAY_FILES (MEMORY/AGENTS/CLAUDE.md) と NO_DECAY_DIRS (knowledge/) は
     1.0 を返す。それ以外は全フォルダ対象（memory/notes/information-hub/logs/skills 等）。
@@ -383,13 +595,14 @@ def add_facts(facts: list[dict]) -> list[dict]:
         source_file = fact.get("source_file")
         fact_date = fact.get("fact_date")
 
-        with torch.no_grad():
-            emb = _model.encode(f"passage: {text}", normalize_embeddings=True).astype(np.float32)
+        emb = _encode_passage(text)
         emb_blob = emb.astype(np.float16).tobytes()
 
         nearest_id = None
         nearest_score = 0.0
-        for fid, fvec in _fact_embeddings:
+        with _fact_embeddings_lock:
+            fact_embeddings = list(_fact_embeddings)
+        for fid, fvec in fact_embeddings:
             score = float(np.dot(fvec, emb))
             if score > nearest_score:
                 nearest_score = score
@@ -402,7 +615,8 @@ def add_facts(facts: list[dict]) -> list[dict]:
             """, (_workspace_name, text, emb_blob, source_file, now, now, fact_date))
             new_id = cursor.lastrowid
 
-        _fact_embeddings.append((new_id, emb))
+        with _fact_embeddings_lock:
+            _fact_embeddings.append((new_id, emb))
 
         results.append({
             "action": "ADD",
@@ -414,6 +628,8 @@ def add_facts(facts: list[dict]) -> list[dict]:
 
     with _conn_lock:
         _conn.commit()
+    if results:
+        export_facts_to_markdown()
     return results
 
 
@@ -446,8 +662,7 @@ def update_fact(fact_id: int, text: Optional[str] = None,
         old_values.append({"text": old_text, "updated_at": now})
         old_values_json = json.dumps(old_values, ensure_ascii=False)
 
-        with torch.no_grad():
-            emb = _model.encode(f"passage: {new_text}", normalize_embeddings=True).astype(np.float32)
+        emb = _encode_passage(new_text)
         emb_blob = emb.astype(np.float16).tobytes()
 
         with _conn_lock:
@@ -457,8 +672,11 @@ def update_fact(fact_id: int, text: Optional[str] = None,
                 WHERE id = ?
             """, (new_text, emb_blob, new_source, now, old_values_json, new_fact_date, fact_id))
 
-        _fact_embeddings = [(fid, fvec) if fid != fact_id else (fid, emb)
-                            for fid, fvec in _fact_embeddings]
+        with _fact_embeddings_lock:
+            _fact_embeddings = [
+                (fid, fvec) if fid != fact_id else (fid, emb)
+                for fid, fvec in _fact_embeddings
+            ]
     else:
         with _conn_lock:
             _conn.execute("""
@@ -468,6 +686,7 @@ def update_fact(fact_id: int, text: Optional[str] = None,
 
     with _conn_lock:
         _conn.commit()
+    export_facts_to_markdown()
     return {
         "action": "UPDATE",
         "id": fact_id,
@@ -492,22 +711,98 @@ def delete_fact(fact_id: int) -> Optional[dict]:
         _conn.execute("DELETE FROM facts WHERE id = ? AND workspace = ?", (fact_id, _workspace_name))
         _conn.commit()
 
-    _fact_embeddings = [(fid, fvec) for fid, fvec in _fact_embeddings if fid != fact_id]
+    with _fact_embeddings_lock:
+        _fact_embeddings = [
+            (fid, fvec) for fid, fvec in _fact_embeddings if fid != fact_id
+        ]
 
+    export_facts_to_markdown()
     return {"action": "DELETE", "id": fact_id, "text": deleted_text}
+
+
+# ----------------------------------------------------------------------------
+# facts → git 追跡用 Markdown スナップショット書き出し
+# ----------------------------------------------------------------------------
+# 背景: facts は DELETE FROM facts で物理削除され、削除ログも履歴テーブルも無い。
+# 「何が消えたか」を後から復元できないので、POST/PUT/DELETE のたびに全 active facts を
+# id 昇順で knowledge/rag_facts.md に書き出して git で追跡可能にする。
+# 正本はあくまで SQLite DB（.workspace_rag/）。この .md は検索・embedding には一切使わない
+# （chunk index からは DEFAULT_EXCLUDE_PATTERNS で除外）。
+RAG_FACTS_MD_REL = "knowledge/rag_facts.md"
+
+RAG_FACTS_MD_HEADER = (
+    "<!-- AUTO-GENERATED — DO NOT EDIT BY HAND -->\n"
+    "<!-- workspace-RAG facts のスナップショット。正本は .workspace_rag/ の SQLite DB。 -->\n"
+    "<!-- /facts API (POST/PUT/DELETE) のたびに workspace_rag_server.py の "
+    "export_facts_to_markdown() が id 昇順で再生成する。手で編集しても次の更新で上書きされる。 -->\n"
+    "<!-- 目的: facts は物理削除で履歴が残らないため、git diff で「何が消えたか」を追えるようにする。 -->\n"
+)
+
+
+def export_facts_to_markdown() -> Optional[str]:
+    """全 active facts を id 昇順で knowledge/rag_facts.md に書き出す。
+
+    - 並びを id 昇順で固定 → 1ファクト追加/削除でも diff が最小限になる
+    - 失敗しても API レスポンスは壊さない（warning ログのみ）
+    - 原子的に temp → rename で書き込む（書きかけファイルを残さない）
+    戻り値: 書き出したパス（成功時）、None（失敗 or workspace 未設定時）。
+    """
+    global _conn, _workspace, _workspace_name
+    if not _workspace:
+        return None
+    try:
+        with _conn_lock:
+            rows = _conn.execute(
+                """
+                SELECT id, text, source_file, created_at, updated_at, fact_date
+                FROM facts
+                WHERE workspace = ? AND is_active = 1
+                ORDER BY id
+                """,
+                (_workspace_name,),
+            ).fetchall()
+
+        lines = [RAG_FACTS_MD_HEADER,
+                 f"# workspace-RAG facts snapshot ({_workspace_name})\n",
+                 f"facts: {len(rows)} 件\n"]
+        for fid, text, source_file, created_at, updated_at, fact_date in rows:
+            lines.append(f"## fact #{fid}\n")
+            meta = [f"- created: {created_at}",
+                    f"- updated: {updated_at}"]
+            if fact_date:
+                meta.append(f"- fact_date: {fact_date}")
+            if source_file:
+                meta.append(f"- source_file: {source_file}")
+            lines.append("\n".join(meta) + "\n")
+            lines.append((text or "").strip() + "\n")
+
+        content = "\n".join(lines).rstrip() + "\n"
+
+        out_path = Path(_workspace) / RAG_FACTS_MD_REL
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(out_path)
+        return str(out_path)
+    except Exception as e:
+        print(f"[rag_facts.md] export failed: {e}", file=sys.stderr)
+        return None
 
 
 def find_similar_facts(query: str, top_k: int = 3) -> list[dict]:
     global _model, _conn, _fact_embeddings
 
-    if not _fact_embeddings:
+    with _fact_embeddings_lock:
+        fact_embeddings = list(_fact_embeddings)
+    if not fact_embeddings:
         return []
 
-    with torch.no_grad():
-        query_emb = _model.encode(f"query: {query}", normalize_embeddings=True).astype(np.float32)
+    query_emb = _encode_query(query)
+    if query_emb is None:
+        return []
 
     scored = []
-    for fid, fvec in _fact_embeddings:
+    for fid, fvec in fact_embeddings:
         score = float(np.dot(fvec, query_emb))
         scored.append((score, fid))
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -539,11 +834,13 @@ def search_facts(query_emb: np.ndarray, top_k: int = 3,
     """ファクトをベクトル検索。/search で chunks 検索と並走する。"""
     global _fact_embeddings, _conn
 
-    if not _fact_embeddings:
+    with _fact_embeddings_lock:
+        fact_embeddings = list(_fact_embeddings)
+    if not fact_embeddings:
         return []
 
     scored = []
-    for fid, fvec in _fact_embeddings:
+    for fid, fvec in fact_embeddings:
         score = float(np.dot(fvec, query_emb))
         if score >= 0.5:
             scored.append((score, fid))
@@ -595,21 +892,32 @@ def search_facts(query_emb: np.ndarray, top_k: int = 3,
 
 def search_fts(conn: sqlite3.Connection, query: str, workspace_name: str) -> dict[int, float]:
     scores = {}
-    use_like = len(query.strip()) < 3
+    stripped_query = query.strip()
+    use_like = len(stripped_query) < 3
+
+    def like_rows():
+        terms = [t for t in re.split(r"\s+", stripped_query) if t]
+        if not terms:
+            return []
+        clauses = " AND ".join(["content LIKE ?"] * len(terms))
+        params = [workspace_name] + [f"%{t}%" for t in terms]
+        cursor = conn.execute(
+            f"SELECT id FROM chunks WHERE workspace = ? AND {clauses} LIMIT 50",
+            params
+        )
+        return [(r[0], 1.0) for r in cursor.fetchall()]
 
     try:
         if use_like:
-            cursor = conn.execute(
-                "SELECT id FROM chunks WHERE workspace = ? AND content LIKE ? LIMIT 50",
-                (workspace_name, f"%{query}%")
-            )
-            rows = [(r[0], 1.0) for r in cursor.fetchall()]
+            rows = like_rows()
         else:
             cursor = conn.execute(
                 "SELECT rowid, rank FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY rank LIMIT 50",
                 (query,)
             )
             rows = cursor.fetchall()
+            if not rows:
+                rows = like_rows()
 
         if not rows:
             return scores
@@ -629,31 +937,67 @@ def search_fts(conn: sqlite3.Connection, query: str, workspace_name: str) -> dic
     return scores
 
 
+def load_chunk_rows(conn: sqlite3.Connection, chunk_ids: list[int]) -> dict[int, tuple]:
+    """検索候補を1回のSELECTで取得し、候補数分のSQLite往復を避ける。"""
+    if not chunk_ids:
+        return {}
+    placeholders = ",".join("?" for _ in chunk_ids)
+    rows = conn.execute(
+        "SELECT id, file_path, chunk_index, content, access_count, last_accessed "
+        f"FROM chunks WHERE id IN ({placeholders})",
+        chunk_ids,
+    ).fetchall()
+    return {row[0]: row[1:] for row in rows}
+
+
 def do_search(query: str, top_k: int = 5, min_score: float = 0.3,
-              mode: str = "hybrid", forgetting: bool = False) -> list[dict]:
+              mode: str = "hybrid", forgetting: bool = False
+              ) -> tuple[list[dict], Optional[np.ndarray], Optional[str]]:
     """常駐サーバー用の検索。
     forgetting=True のときのみ memory/notes/knowledge 配下に decay を掛け、access_count を更新。
     """
-    global _model, _conn, _workspace_name, _embedding_ids, _embedding_matrix, _workspace
+    global _model, _conn, _workspace_name, _embedding_ids, _embedding_matrix
+    global _vector_index, _workspace
 
     vector_scores = {}
     fts_scores = {}
+    query_emb = None
+    degraded_reason = None
 
-    if mode in ("hybrid", "vector") and _embedding_matrix is not None and len(_embedding_matrix) > 0:
-        with torch.no_grad():
-            query_emb = _model.encode(f"query: {query}", normalize_embeddings=True).astype(np.float32)
-        scores = _embedding_matrix @ query_emb
-        for i in range(len(scores)):
-            if scores[i] >= min_score:
-                vector_scores[int(_embedding_ids[i])] = float(scores[i])
+    with _conn_lock:
+        embedding_ids = _embedding_ids
+        embedding_matrix = _embedding_matrix
+        vector_index = _vector_index
+
+    if mode in ("hybrid", "vector") and embedding_matrix is not None and len(embedding_matrix) > 0:
+        query_emb = _encode_query(query)
+        if query_emb is None:
+            degraded_reason = "query_encoder_busy"
+        else:
+            vector_scores = vector_top_candidates(
+                query_emb,
+                max(top_k * 4, 20),
+                min_score,
+                embedding_ids,
+                embedding_matrix,
+                vector_index,
+            )
 
     if mode in ("hybrid", "keyword"):
         with _conn_lock:
             fts_scores = search_fts(_conn, query, _workspace_name)
+    if mode == "hybrid" and query_emb is not None:
+        add_exact_scores_for_fts(
+            vector_scores,
+            fts_scores,
+            query_emb,
+            embedding_ids,
+            embedding_matrix,
+        )
 
     all_ids = set(vector_scores.keys()) | set(fts_scores.keys())
     if not all_ids:
-        return []
+        return [], query_emb, degraded_reason
 
     scored = []
     for chunk_id in all_ids:
@@ -672,15 +1016,16 @@ def do_search(query: str, top_k: int = 5, min_score: float = 0.3,
     # 再ソートするので少し多めに保持
     scored = scored[:max(top_k * 4, 20)]
 
+    with _conn_lock:
+        chunk_rows = load_chunk_rows(
+            _conn,
+            [chunk_id for _, chunk_id, _, _ in scored],
+        )
+
     results = []
     decay_updates: list[int] = []
     for combined, chunk_id, v_score, f_score in scored:
-        with _conn_lock:
-            cursor = _conn.execute(
-                "SELECT file_path, chunk_index, content, access_count, last_accessed FROM chunks WHERE id = ?",
-                (chunk_id,)
-            )
-            row = cursor.fetchone()
+        row = chunk_rows.get(chunk_id)
         if not row:
             continue
         file_path, chunk_index, content, access_count, last_accessed = row
@@ -688,8 +1033,8 @@ def do_search(query: str, top_k: int = 5, min_score: float = 0.3,
 
         from workspace_rag import get_path_weight, get_freshness_score
         pw = get_path_weight(file_path)
-        # forgetting=off は全期間を平等に扱う契約。古い文書を更新時刻だけで
-        # 沈めず、時間減衰を明示した検索だけ freshness を使う。
+        # forgetting=off は全期間を平等に扱う契約。古い発信アーカイブを
+        # mtime だけで沈めない。時間減衰を明示した検索だけ freshness を使う。
         fr = get_freshness_score(file_path, _workspace) if forgetting else 1.0
 
         decay = 1.0
@@ -725,21 +1070,27 @@ def do_search(query: str, top_k: int = 5, min_score: float = 0.3,
     # forgetting=on のときだけ access_count を更新（強化学習）
     if forgetting and decay_updates:
         today = date.today().isoformat()
-        returned_ids = {r["file_path"] for r in results}
-        # 上位 top_k 件のうち decay 対象だったものだけ更新
-        top_chunk_ids = [
-            cid for (_, cid, _, _) in scored
-            if any(r["file_path"] for r in results)  # 上位フィルタ
-        ][:top_k]
+        returned_keys = {
+            (result["file_path"], result["chunk_index"]) for result in results
+        }
+        returned_decay_ids = [
+            chunk_id
+            for chunk_id in decay_updates
+            if (
+                chunk_id in chunk_rows
+                and (chunk_rows[chunk_id][0], chunk_rows[chunk_id][1])
+                in returned_keys
+            )
+        ]
         with _conn_lock:
-            for cid in decay_updates[:top_k]:
+            for cid in returned_decay_ids:
                 _conn.execute(
                     "UPDATE chunks SET access_count = COALESCE(access_count, 0) + 1, last_accessed = ? WHERE id = ?",
                     (today, cid)
                 )
             _conn.commit()
 
-    return results
+    return results, query_emb, degraded_reason
 
 
 def grep_search(query: str, workspace: str, max_results: int = 10) -> list[dict]:
@@ -823,6 +1174,11 @@ def grep_search(query: str, workspace: str, max_results: int = 10) -> list[dict]
 # HTTP handler
 # ----------------------------------------------------------------------------
 
+class WorkspaceRAGHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 64
+    daemon_threads = True
+
+
 class WorkspaceRAGHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -833,7 +1189,11 @@ class WorkspaceRAGHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", len(body))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            # クライアント側timeout後の切断はサーバー障害ではない。
+            return
 
     def _read_json_body(self) -> Optional[dict]:
         content_length = int(self.headers.get("Content-Length", 0))
@@ -867,6 +1227,8 @@ class WorkspaceRAGHandler(BaseHTTPRequestHandler):
             from datetime import datetime as _dt, timezone
             self._send_json({
                 "status": "ok",
+                "service": "workspace-rag",
+                "api_version": 1,
                 "workspace": _workspace,
                 "workspace_name": _workspace_name,
                 "chunks_cached": len(_embedding_ids) if _embedding_ids is not None else 0,
@@ -876,9 +1238,18 @@ class WorkspaceRAGHandler(BaseHTTPRequestHandler):
                 "db_size_mb": db_size_mb,
                 "port": DEFAULT_PORT,
                 "model": DEFAULT_MODEL,
+                "vector_backend": _vector_backend,
+                "vector_index_size": (
+                    int(_vector_index.ntotal) if _vector_index is not None else 0
+                ),
                 "auto_reindex": _auto_reindex_enabled,
                 "reindex_count": _reindex_count,
                 "last_reindex": _dt.fromtimestamp(_last_reindex_time, tz=timezone.utc).isoformat() if _last_reindex_time else None,
+                "reindex_in_progress": _reindex_in_progress,
+                "reindex_source": _reindex_source,
+                "reindex_started_at": _dt.fromtimestamp(_reindex_started_at, tz=timezone.utc).isoformat() if _reindex_started_at else None,
+                "last_reindex_duration_ms": _last_reindex_duration_ms,
+                "last_reindex_error": _last_reindex_error,
             })
 
         elif parsed.path == "/search":
@@ -896,13 +1267,13 @@ class WorkspaceRAGHandler(BaseHTTPRequestHandler):
             forgetting = params.get("forgetting", ["off"])[0].lower() in ("1", "true", "yes", "on")
 
             t0 = time.time()
-            results = do_search(query, top_k, min_score, mode, forgetting)
+            results, query_emb, degraded_reason = do_search(
+                query, top_k, min_score, mode, forgetting
+            )
 
             # ファクト検索を相乗り（memory-rag 互換）
             fact_results = []
-            if _fact_embeddings:
-                with torch.no_grad():
-                    query_emb = _model.encode(f"query: {query}", normalize_embeddings=True).astype(np.float32)
+            if _fact_embeddings and query_emb is not None:
                 fact_results = search_facts(query_emb, top_k=3)
 
             elapsed_ms = (time.time() - t0) * 1000
@@ -923,6 +1294,9 @@ class WorkspaceRAGHandler(BaseHTTPRequestHandler):
                 "grep_count": len(grep_results),
                 "grep_results": grep_results,
             }
+            if degraded_reason:
+                response["degraded"] = True
+                response["degraded_reason"] = degraded_reason
 
             if r2ag and results:
                 r2ag_text = "以下の文書を参考に質問に答えてください。\n関連度が高いほど信頼できます。\n\n"
@@ -975,25 +1349,30 @@ class WorkspaceRAGHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/reindex":
-            global _fact_embeddings
-            try:
-                from workspace_rag import index_workspace
-                index_workspace(_workspace, force=False)
-                # 新規接続を先に作って atomic に差し替え → closed _conn 残留からの
-                # 自己復旧手段としても機能する。
-                new_conn = init_db(_db_path)
-                _swap_conn(new_conn)
-                with _conn_lock:
-                    _embedding_ids, _embedding_matrix = load_embeddings_cache(_conn, _workspace_name)
-                    _fact_embeddings = load_fact_embeddings(_conn, _workspace_name)
+            if not _reindex_lock.acquire(blocking=False):
                 self._send_json({
-                    "status": "ok",
-                    "message": "Reindex complete",
-                    "chunks_cached": len(_embedding_ids),
-                    "facts_cached": len(_fact_embeddings),
-                })
-            except Exception as e:
-                self._send_json({"error": str(e)}, 500)
+                    "status": "busy",
+                    "message": "Reindex already in progress",
+                }, 409)
+                return
+
+            started_event = threading.Event()
+            reindex_thread = threading.Thread(
+                target=_run_reindex,
+                args=("manual", True, started_event),
+                daemon=True,
+            )
+            try:
+                reindex_thread.start()
+            except Exception as exc:
+                _reindex_lock.release()
+                self._send_json({"error": f"Failed to start reindex: {exc}"}, 500)
+                return
+            started_event.wait(timeout=1)
+            self._send_json({
+                "status": "accepted",
+                "message": "Reindex started",
+            }, 202)
 
         elif parsed.path in ("/facts", "/extract"):
             try:
@@ -1078,7 +1457,8 @@ def remove_pid(workspace: str):
 
 def main():
     global _model, _conn, _workspace, _workspace_name, _db_path
-    global _embedding_ids, _embedding_matrix, _fact_embeddings, DEFAULT_PORT
+    global _embedding_ids, _embedding_matrix, _vector_index, _vector_backend
+    global _fact_embeddings, DEFAULT_PORT
 
     parser = argparse.ArgumentParser(description="Workspace RAG Server (with facts CRUD + forgetting curve)")
     parser.add_argument("-w", "--workspace", required=True, help="Workspace directory")
@@ -1124,10 +1504,17 @@ def main():
     print("Caching embeddings...", file=sys.stderr, flush=True)
     t1 = time.time()
     _embedding_ids, _embedding_matrix = load_embeddings_cache(_conn, _workspace_name)
+    _vector_index, _vector_backend = build_vector_index(_embedding_matrix)
     print(f"Cached {len(_embedding_ids)} chunk embeddings in {time.time() - t1:.1f}s", file=sys.stderr, flush=True)
+    print(f"Vector backend: {_vector_backend}", file=sys.stderr, flush=True)
 
     _fact_embeddings = load_fact_embeddings(_conn, _workspace_name)
     print(f"Cached {len(_fact_embeddings)} fact embeddings", file=sys.stderr, flush=True)
+
+    # 起動時に現在の facts を knowledge/rag_facts.md へ書き出す（mutation を待たず現状反映）
+    _exported = export_facts_to_markdown()
+    if _exported:
+        print(f"Exported facts snapshot to {_exported}", file=sys.stderr, flush=True)
 
     write_pid(_workspace)
 
@@ -1148,42 +1535,21 @@ def main():
 
     if _auto_reindex_enabled:
         def auto_reindex():
-            global _embedding_ids, _embedding_matrix, _fact_embeddings, _last_reindex_time, _reindex_count
             import gc
             interval = args.reindex_interval
             while True:
                 time.sleep(interval)
-                try:
-                    # ループ先頭で _conn の健全性を確認。壊れていたら作り直す。
-                    # 前回ループで何かが起きて closed のまま残ったケースの自己修復。
-                    _ensure_conn()
-
-                    from workspace_rag import index_workspace
-                    print(f"[auto-reindex] Starting (interval={interval}s)...", file=sys.stderr, flush=True)
-                    index_workspace(_workspace, force=False)
-
-                    # 新規接続を先に作って atomic に差し替え → 「closed _conn が
-                    # 一瞬でも見える」隙間をゼロにする。
-                    new_conn = init_db(_db_path)
-                    _swap_conn(new_conn)
-                    with _conn_lock:
-                        _embedding_ids, _embedding_matrix = load_embeddings_cache(_conn, _workspace_name)
-                        _fact_embeddings = load_fact_embeddings(_conn, _workspace_name)
-                    _last_reindex_time = time.time()
-                    _reindex_count += 1
-                    gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    rss_mb = os.popen("ps -o rss= -p %d" % os.getpid()).read().strip()
-                    rss_mb = int(rss_mb) // 1024 if rss_mb else 0
-                    print(f"[auto-reindex] Done. {len(_embedding_ids)} chunks / {len(_fact_embeddings)} facts cached. (count={_reindex_count}, RSS={rss_mb}MB)", file=sys.stderr, flush=True)
-                except Exception as e:
-                    print(f"[auto-reindex] Error: {e}", file=sys.stderr, flush=True)
+                if not _run_reindex("auto"):
+                    print("[auto-reindex] Skipped: reindex already in progress", file=sys.stderr, flush=True)
+                    continue
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
         reindex_thread = threading.Thread(target=auto_reindex, daemon=True)
         reindex_thread.start()
 
-    server = HTTPServer(("127.0.0.1", DEFAULT_PORT), WorkspaceRAGHandler)
+    server = WorkspaceRAGHTTPServer(("127.0.0.1", DEFAULT_PORT), WorkspaceRAGHandler)
     print(f"Workspace RAG Server running on http://127.0.0.1:{DEFAULT_PORT}", file=sys.stderr, flush=True)
     print(f"  Workspace: {_workspace} ({_workspace_name})", file=sys.stderr, flush=True)
     print(f"  Chunks: {len(_embedding_ids)}", file=sys.stderr, flush=True)
