@@ -188,12 +188,6 @@ echo "State: $TASK_STATE_DIR"
 
 ---
 
-## トリガー
-
-`triggers/` には LLM が Function Calling で呼び出す軽量ツールがあります。一覧と仕組みは `triggers/README.md` を参照。
-
----
-
 ## 安全ルール
 
 - ユーザーのプライベートデータを外部に出さない。絶対に
