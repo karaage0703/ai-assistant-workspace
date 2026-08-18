@@ -17,7 +17,7 @@ description: |
 - ファイル操作なしに「記録した」と報告しない（嘘禁止）
 - 完了報告には**Notion日記のURL**を含める（Notion連携時）
 - 記録にない数値を断定しない。推定する場合は「推定」と明記する
-- チャット履歴、memory、notes、必要ならworkspace-RAGを確認して漏れを拾う
+- チャット履歴、memory、notes、必要ならxangi-searchまたは通常のファイル検索で漏れを拾う
 
 ## 保存先
 
@@ -33,7 +33,7 @@ description: |
 
 1. `memory/YYYYMMDD.md` を読む（その日の出来事・会話ログ）
 2. `date -d "YYYY-MM-DD" +%A` で**曜日を確認**（思い込みで書かない）
-3. 必要に応じて `notes/` や workspace-RAG で、その日の関連メモ・発信・作業ログを確認する
+3. 必要に応じて `notes/` やxangi-searchで、その日の関連メモ・発信・作業ログを確認する。xangi-search未導入時は通常のファイル検索を使う
 4. チャットプラットフォームで動いている場合は、直近履歴や添付ファイルも確認する
 
 ### Step 2: notes/に日記作成

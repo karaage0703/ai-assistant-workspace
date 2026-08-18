@@ -25,10 +25,13 @@ node_modules/
 skills/xs-calendar/calendar_urls.json
 skills/xs-calendar/manual_events.json
 
-# ワークスペースRAG
+# 旧workspace-RAGデータの誤公開防止（移行後も維持）
 *.db
 *.db-journal
 .workspace_rag/
+
+# xangi-searchのindex / runtime state
+.xangi-search/
 
 # xangi / runtime state
 .xangi/

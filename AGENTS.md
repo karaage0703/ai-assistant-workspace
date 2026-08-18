@@ -47,11 +47,13 @@
 2. **メインセッション**（ユーザーとの直接チャット）の場合：`MEMORY.md` も読む
 3. **チャットプラットフォーム**（Discord/Slack等）の場合：
    - 最初のメッセージを受け取ったら、そのチャンネルの直近メッセージ（10件程度）を確認して文脈を把握
-   - 取得方法は使用中のプラットフォーム/ボット（例: xangiの`xangi-cmd discord_history`）に依存
+   - 取得方法は使用中のプラットフォーム/ボット（例: xangiの`xangi tool discord_history`）に依存
    - セッション再開時は会話の流れが分からないので、返答前に必ず行う
 4. **スキルマッチング**（毎回のメッセージで実行）
    - メッセージ内のキーワードが各スキルのdescription/トリガーフレーズに該当するか確認
    - 該当スキルがあれば、自己流で対応せず必ず該当の `SKILL.md` を読んでから対応する
+
+xangiの操作方法や引数は推測しない。必要な時だけ `xangi tool help <topic|command>` で現行仕様を確認する。
 
 許可を求めない。やる。
 
@@ -145,7 +147,7 @@ Docker build、動画処理、外部AIレビューなど、時間がかかる処
 
 - `nohup ... &` 単独ではなく、`setsid bash -lc` で親のprocess groupから分離する
 - PID、ログ、終了コードをファイルへ保存し、開始報告前に別SID/PGIDで生存していることを確認する
-- xangiで動いている場合は、成功・失敗のどちらでも終了状態を保存した後に `xangi-cmd trigger` を呼ぶ
+- xangiで動いている場合は、成功・失敗のどちらでも終了状態を保存した後に `xangi tool trigger` を呼ぶ
 - 定刻で見に行く必要がある場合は、スケジュール機能を使う
 
 例:
@@ -162,8 +164,8 @@ setsid bash -lc '
   <COMMAND> > "$state_dir/task.log" 2>&1
   rc=$?
   echo "$rc" > "$state_dir/exit"
-  if [ -n "$trigger_channel" ] && command -v xangi-cmd >/dev/null 2>&1; then
-    xangi-cmd trigger --channel "$trigger_channel" \
+  if [ -n "$trigger_channel" ] && command -v xangi >/dev/null 2>&1; then
+    xangi tool trigger --channel "$trigger_channel" \
       --message "長時間処理が終了しました。保存済みの終了状態とログを確認してください" \
       --source long-task
   fi

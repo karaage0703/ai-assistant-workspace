@@ -192,7 +192,7 @@ AIアシスタントのセッションは turn-based。外部AIプロセスを�
 
 1. `setsid bash -lc` で親process groupから分離し、PID・ログ・終了コードを保存する
 2. 開始報告前に `ps` で別SID/PGIDと生存を確認する
-3. xangi環境なら、子プロセスが終了状態を保存した後に `xangi-cmd trigger` を呼ぶ。定刻確認なら `schedule_add` を使う
+3. xangi環境なら、子プロセスが終了状態を保存した後に `xangi tool trigger` を呼ぶ。定刻確認なら `schedule_add` を使う
 4. ログパス、復帰方法、確認コマンドをユーザーに伝える
 
 例:
@@ -208,7 +208,7 @@ setsid bash -lc '
   bash skills/xs-multi-agent/scripts/run_agent.sh "$agent" "$prompt_file" "$workspace" > "$state_dir/output.log" 2>&1
   rc=$?
   echo "$rc" > "$state_dir/exit"
-  # xangiでは終了状態保存後に xangi-cmd trigger を呼ぶ
+  # xangiでは終了状態保存後に xangi tool trigger を呼ぶ
   exit "$rc"
 ' bash "$AGENT_STATE_DIR" codex /tmp/multi-agent-prompt.txt "$PWD" >/dev/null 2>&1 &
 

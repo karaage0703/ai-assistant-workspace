@@ -62,7 +62,7 @@ rg -n "service start|service stop|service restart|service status|XANGI_PROCESS_N
 
 - 起動・停止・再起動・状態確認は対象 clone の `./bin/xangi service start|stop|restart|status` を使う
 - PATHから使う場合は `xangi-dev` / `xangi-prod` のような名前付き symlink を使う
-- `xangi-cmd system_restart` は起動中プロセスに graceful shutdown を要求する低レベル操作
+- `xangi tool system_restart` は起動中プロセスに graceful shutdown を要求する低レベル操作
 - `system_settings` は確認用。AI は `system_settings` で設定変更しない
 - 設定ファイル変更後は対象 clone で `./bin/xangi service restart` する
 

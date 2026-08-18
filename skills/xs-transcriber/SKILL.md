@@ -69,7 +69,7 @@ tail -f "$TRANSCRIPTION_STATE_DIR/transcription.log"
 cat "$TRANSCRIPTION_STATE_DIR/exit"
 ```
 
-xangiでturnを跨ぐ場合は、処理の末尾で終了状態を保存した後に `xangi-cmd trigger` を呼ぶ。triggerを設定できない環境では、ログ・終了状態の確認をユーザーへ明示的に引き継ぎ、自動で戻ると約束しない。
+xangiでturnを跨ぐ場合は、処理の末尾で終了状態を保存した後に `xangi tool trigger` を呼ぶ。triggerを設定できない環境では、ログ・終了状態の確認をユーザーへ明示的に引き継ぎ、自動で戻ると約束しない。
 
 ### Step 5: 完了報告
 
