@@ -6,7 +6,7 @@ AIコーディングツール（Claude Code / Codex CLI / Grok CLI など）を�
 
 [xangi](https://github.com/karaage0703/xangi)（Discord常駐型AIアシスタント）の推奨ワークスペースです。xangiと組み合わせることで、チャットからスキルを呼び出して日常タスクを自動化できます。
 
-このワークスペースは、単なるプロンプト集ではありません。`AGENTS.md`、`MEMORY.md`、`memory/`、`notes/`、`skills/`、`triggers/` を組み合わせて、AIアシスタントがセッションをまたいで文脈を読み、必要なスキルを選び、作業結果をファイルに残すための実運用テンプレートです。
+このワークスペースは、単なるプロンプト集ではありません。`AGENTS.md`、`MEMORY.md`、`memory/`、`notes/`、`skills/` を組み合わせて、AIアシスタントがセッションをまたいで文脈を読み、必要なスキルを選び、作業結果をファイルに残すための実運用テンプレートです。
 
 背景にある考え方は、技術同人誌「[生活に溶け込むAI](https://karaage0703.booth.pm/items/8027277)」で紹介しています。書籍の紹介記事は「[技術同人誌『生活に溶け込むAI — AIエージェントで作る、自分だけのアシスタント』を販売しました](https://karaage.hatenadiary.jp/entry/2026/02/25/073000)」を参照してください。
 
@@ -20,7 +20,6 @@ AIコーディングツール（Claude Code / Codex CLI / Grok CLI など）を�
 - **知識収集** — テックニュース、arXiv、YouTube、ポッドキャスト
 - **生活ログ** — カレンダー、健康管理、ペット写真などの任意スキル
 - **外部連携** — Notion、Google Workspace、xangi など。認証情報を設定した場合だけ使う
-- **トリガー** — LLMがFunction Callingで呼ぶ軽量ツール（天気・ニュースなど）
 - **スキル作成** — 自分だけのカスタムスキルを作る
 
 ## 基本コンセプト
@@ -112,8 +111,7 @@ ai-assistant-workspace/
 │   └── skills -> ../skills  # Grok CLI 用シンボリックリンク
 ├── memory/                # 日記・メモの保存先（YYYYMMDD.md 形式）
 ├── notes/                 # ノート・調査メモの保存先
-├── skills/                # スキル（AIの拡張機能） — 一覧は skills/README.md を参照
-└── triggers/              # LLMがFunction Callingで呼び出す軽量ツール — triggers/README.md を参照
+└── skills/                # スキル（AIの拡張機能） — 一覧は skills/README.md を参照
 ```
 
 ## 使い方のヒント
@@ -218,17 +216,6 @@ ai-assistant-workspace/
 ```
 「読書メモを管理するスキルを作って」
 ```
-
-## トリガー（LLM呼び出し用の軽量ツール）
-
-`triggers/` ディレクトリには **LLMがFunction Callingで呼び出す軽量ツール**のテンプレートがあります。スキルとツール呼び出しの中間に位置する仕組みで、ローカルLLMでも再現性高く決まった処理を実行できるように設計されています。コンセプト詳細は [Trigger: ローカルLLM用簡易スキルシステム](https://zenn.dev/karaage0703/articles/89631872ca5a86) を参照。
-
-| トリガー | 内容 | LLMが呼ぶ場面 |
-|----------|------|----------------|
-| **technews** | 最新テックニュース（RSS）を取得 | 「テックニュース教えて」「最近の話題は？」 |
-| **weather** | 天気予報を取得（wttr.in） | 「今日の天気は？」「名古屋の天気」 |
-
-仕組み・新規作成手順は `triggers/README.md` を参照してください。
 
 ## カスタマイズ
 
