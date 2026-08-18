@@ -15,12 +15,12 @@ AIコーディングツール（Claude Code / Codex CLI / Grok CLI など）を�
 同梱スキルは「全部使う」前提ではありません。必要なものだけ残して、自分の環境に合わせて削ってください。
 
 - **記録** — 調査結果・アイデア・会議メモ・日記を `notes/` と `memory/` に保存
-- **検索** — ワークスペース内のメモや判断をRAGで横断検索
+- **検索** — xangi-searchを追加すると、ワークスペース内のメモや判断を横断検索
 - **開発** — ブランチ運用、PR作成、コードレビュー、リポジトリ分析
 - **知識収集** — テックニュース、arXiv、YouTube、ポッドキャスト
 - **生活ログ** — カレンダー、健康管理、ペット写真などの任意スキル
 - **外部連携** — Notion、Google Workspace、xangi など。認証情報を設定した場合だけ使う
-- **トリガー** — LLMがFunction Callingで呼ぶ軽量ツール（天気・ニュース・RAG検索など）
+- **トリガー** — LLMがFunction Callingで呼ぶ軽量ツール（天気・ニュースなど）
 - **スキル作成** — 自分だけのカスタムスキルを作る
 
 ## 基本コンセプト
@@ -38,7 +38,7 @@ AIコーディングツールのセッションは毎回まっさらな状態で
 
 ### スキルで行動を増やす
 
-`skills/` に `SKILL.md` を置くと、AIアシスタントは依頼内容に応じて必要な手順を読み込みます。日記、健康管理、RAG検索、コードレビュー、開発ワークフローなどをスキルとして分離することで、プロンプトを巨大化させずに機能を増やせます。
+`skills/` に `SKILL.md` を置くと、AIアシスタントは依頼内容に応じて必要な手順を読み込みます。日記、健康管理、コードレビュー、開発ワークフローなどをスキルとして分離することで、プロンプトを巨大化させずに機能を増やせます。
 
 ### 複数AIの意見を検証して統合する
 
@@ -46,15 +46,15 @@ AIコーディングツールのセッションは毎回まっさらな状態で
 
 「複数起動した」だけを合意とは扱いません。異なるproviderへ同じ統合質問を渡し、空回答や途中終了を除外した成果物が2系統以上あることを `validate_panel.sh` で確認します。
 
-### RAGで過去の文脈を探す
+### xangi-searchで過去の文脈を探す
 
-`xs-workspace-rag` は `memory/`、`notes/`、`knowledge` 相当のファイルを検索するための任意スキルです。使いたい場合だけ、スキルのREADMEに従ってセットアップしてください。
+ワークスペース検索には、xangiの公式Extensionカタログから追加できる [xangi-search](https://github.com/karaage0703/xangi-search) を推奨します。xangi Web UIの「拡張」でxangi-searchを追加し、表示されるセットアップ手順に従ってください。検索機能とAI向けスキルはxangi-search側で管理されるため、このリポジトリには検索エンジンを同梱しません。
 
-初期状態ではRAGの起動確認や検索を行いません。RAGをセットアップしなくても、このテンプレートの記録・スキル・開発機能はそのまま利用できます。
+xangi-searchは任意です。導入していない場合も、AIは通常のファイル読み取りや文字列検索を使って、このテンプレートの記録・スキル・開発機能を利用できます。xangiを使わず単独CLIとして利用する方法は、xangi-searchのREADMEを参照してください。
 
 ### 長時間処理は復帰導線を作る
 
-Docker build、RAGインデックス、動画処理、外部AIの並列レビューなど時間がかかる処理は、親プロセスの終了から分離して実行し、PID・ログ・終了コードを残します。Linux / WSLでは`setsid bash -lc`、macOSではlaunchdなどOSのservice managerを使います。`nohup ... &` 単独は環境によって親process groupの終了に巻き込まれるため、同等の代替にはなりません。xangiで使う場合は、成功・失敗のどちらでも終了状態を保存した後に `xangi-cmd trigger` で自分を起こす導線を付けます。具体例は `AGENTS.md` の「長時間タスク」を参照してください。
+Docker build、動画処理、外部AIの並列レビューなど時間がかかる処理は、親プロセスの終了から分離して実行し、PID・ログ・終了コードを残します。Linux / WSLでは`setsid bash -lc`、macOSではlaunchdなどOSのservice managerを使います。`nohup ... &` 単独は環境によって親process groupの終了に巻き込まれるため、同等の代替にはなりません。xangiで使う場合は、成功・失敗のどちらでも終了状態を保存した後に `xangi tool trigger` で自分を起こす導線を付けます。具体例は `AGENTS.md` の「長時間タスク」を参照してください。
 
 ## クイックスタート
 
@@ -64,7 +64,25 @@ Docker build、RAGインデックス、動画処理、外部AIの並列レビュ
 - チャット常駐で使う場合: [xangi](https://github.com/karaage0703/xangi)
 - 外部サービス連携を使う場合: Notion / Google / Discord / Slack などのAPIキーやBot token
 
-### セットアップ手順
+### 推奨: xangiで使う
+
+```bash
+xangi setup
+```
+
+セットアップでは既存ワークスペースを選ぶか、このリポジトリを推奨テンプレートとして取得できます。まずWeb Chatをローカルで起動・確認し、必要に応じてDiscord / Slack / LINE / Telegramなどを追加します。secret設定が必要な場合は、AIとの会話へ値を貼らず、ローカル設定画面を使います。
+
+```bash
+xangi settings
+```
+
+xangi-searchを使う場合は、Web UIの「拡張」から追加します。初回起動時から公式候補として表示され、追加後は専用のセットアップ会話が案内します。
+
+xangiのインストール、対応AI、サービス起動、各チャット連携、Extension管理の最新手順は [xangi](https://github.com/karaage0703/xangi) のREADMEと同梱ドキュメントを正本として参照してください。このワークスペースは、AIの人格・記憶・スキル・ユーザーデータを管理し、xangi本体の起動手順やsecret値は管理しません。
+
+### AI CLIから直接使う
+
+xangiを使わず、AI CLIからこのワークスペースを直接開くこともできます。
 
 ```bash
 # 1. リポジトリをクローン
@@ -74,29 +92,9 @@ cd ai-assistant-workspace
 # 2. AIツールを起動（いずれか）
 claude          # Claude Code の場合
 codex           # Codex CLI の場合
-
-# 3. 自動セットアップが始まります
-# AIがあなたに質問して、あなた専用のアシスタントを作ります
 ```
 
-Claude Code の場合、`.claude/skills` → `skills/` のシンボリックリンクがリポジトリに含まれているため、クローンするだけでスキルが使えます。
-Codex CLI / Grok CLI 用にも `.agents/skills`、`.grok/skills` のリンクを同梱しています。
-
-### xangiで使う場合
-
-xangiをインストールした後、xangi本体のセットアップを実行します。
-
-```bash
-xangi setup
-```
-
-セットアップでは既存ワークスペースを選ぶか、このリポジトリを推奨テンプレートとして取得できます。Discord / Slack / LINE / Telegram / Notionなどのsecret設定が必要な場合は、AIとの会話へ値を貼らず、ローカル設定画面を使います。
-
-```bash
-xangi settings
-```
-
-xangiのインストール、対応AI、サービス起動、各チャット連携の最新手順は [xangi](https://github.com/karaage0703/xangi) のREADMEと同梱ドキュメントを正本として参照してください。このワークスペースは、AIの人格・記憶・スキル・ユーザーデータを管理し、xangi本体の起動手順やsecret値は管理しません。
+初回起動時に`BOOTSTRAP.md`の対話セットアップが始まります。Claude Code用の`.claude/skills`、Codex CLI用の`.agents/skills`、Grok CLI用の`.grok/skills`を同梱しているため、クローンしたスキルをそのまま利用できます。
 
 ## ディレクトリ構成
 
@@ -227,7 +225,6 @@ ai-assistant-workspace/
 
 | トリガー | 内容 | LLMが呼ぶ場面 |
 |----------|------|----------------|
-| **rag** | ワークスペース全体をRAG検索（任意） | 「RAGで○○を探して」 |
 | **technews** | 最新テックニュース（RSS）を取得 | 「テックニュース教えて」「最近の話題は？」 |
 | **weather** | 天気予報を取得（wttr.in） | 「今日の天気は？」「名古屋の天気」 |
 
@@ -246,7 +243,7 @@ ai-assistant-workspace/
 - 調査結果や記事化したい内容は `notes/`
 - 手順や行動ルールは `AGENTS.md`
 
-この分け方を守ると、後からRAG検索した時に「ルール」「長期記憶」「作業ログ」「成果物」が混ざりにくくなります。
+この分け方を守ると、後からファイル検索やxangi-searchを使う時に「ルール」「長期記憶」「作業ログ」「成果物」が混ざりにくくなります。
 
 ### スキルを追加する
 

@@ -30,10 +30,6 @@
 ```
 triggers/
 ├── README.md           # このファイル
-├── rag/                # ワークスペースRAG検索
-│   ├── trigger.yaml
-│   ├── handler.sh
-│   └── README.md
 ├── technews/           # テックニュース取得
 │   ├── trigger.yaml
 │   ├── handler.sh
@@ -99,7 +95,7 @@ EOF
 chmod +x triggers/myhello/handler.sh
 
 # 4. xangi を再起動（新トリガーは起動時に読み込まれる）
-xangi-cmd system_restart
+xangi tool system_restart
 ```
 
 登録後はチャットで「○○さんに挨拶して」のような自然言語で話しかけると、LLMが `myhello` トリガーを呼ぶ判断をして `こんにちは ユーザー さん` のような応答を返してくれる（具体的な発火条件は `description` の書き方次第）。
@@ -110,7 +106,6 @@ xangi-cmd system_restart
 
 ```bash
 ./triggers/weather/handler.sh 名古屋
-./triggers/rag/handler.sh "AI開発ワークフロー"
 ```
 
 別のFunction Calling対応LLMフレームワークから呼ぶことも、CIから呼ぶことも可能。
@@ -126,6 +121,5 @@ xangi-cmd system_restart
 
 | トリガー | 説明 | LLMが呼ぶ場面の例 |
 |---|---|---|
-| [rag](rag/README.md) | ワークスペースRAGで検索（[`workspace-rag`](../skills/xs-workspace-rag/) 連携） | 「過去のメモから○○探して」 |
 | [technews](technews/README.md) | 最新テックニュース取得（RSS） | 「テックニュース教えて」 |
 | [weather](weather/README.md) | 天気予報取得（wttr.in） | 「名古屋の天気は？」 |

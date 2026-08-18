@@ -26,8 +26,8 @@ xangi 上で起きた事象を「事象整理 → ログ調査 → 真因特定 
 
 1. 引用メッセージ・チャンネル履歴を取得して事象の輪郭をつかむ
    ```bash
-   xangi-cmd discord_history --count 30
-   xangi-cmd discord_history --channel <ID> --count 50
+   xangi tool discord_history --count 30
+   xangi tool discord_history --channel <ID> --count 50
    ```
 2. 関係するスキル名・cron スケジュール・関連ファイルを箇条書きで把握する
 3. **過去事例（KEDB = Known Error Database）を必ず確認** — `[NOTES_DIR]` の過去 xangi-kaizen ノートを事象キーワードで grep
@@ -62,11 +62,11 @@ docker inspect <container> --format '{{range .Mounts}}{{.Source}} -> {{.Destinat
 | state ファイル | `[STATE_DIR]/*_state.json`、`references/*_last_check.json` 等の中身と `stat -c "%y %n"` |
 | git 履歴 | `git log -p --all -- <path>`、`git show <commit>:<path>` |
 | git reflog | `git reflog --since=<時刻>`（ブランチ切替・rebase・reset の追跡） |
-| cron / schedule | `xangi-cmd schedule_list 2>&1 \| grep -B2 -A3 <キーワード>` |
+| cron / schedule | `xangi tool schedule_list 2>&1 \| grep -B2 -A3 <キーワード>` |
 | セッションログ（生応答） | 対象 bot の `<bot-workspace>/logs/sessions/*.jsonl`。事象の出たチャンネル ID で `grep -rl <channelId>` → 該当ファイルの当該ターンを開き、assistant result を確認 |
 | tool-trajectory ログ | `<bot-workspace>/logs/tool-trajectory/*.jsonl`。tool search / loop / drift / stream buffer / cache などのイベントが時系列で残る |
 | 該当スクリプト/コード | `skills/<name>/scripts/`、または対象リポのソース。ログで事象を確定した後に「なぜそうなるか」を辿る |
-| 投稿履歴 | `xangi-cmd discord_history --channel <ID> --count 30` |
+| 投稿履歴 | `xangi tool discord_history --channel <ID> --count 30` |
 
 「これしか見ていない」状態で次フェーズに行かない。
 

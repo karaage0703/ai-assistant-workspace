@@ -4,11 +4,7 @@
 
 ## 利用可能なスキル
 
-### 検索・知識ベース
-
-| スキル | 説明 | トリガー |
-|--------|------|----------|
-| **xs-workspace-rag** | ワークスペース全体をハイブリッド検索（SQLite FTS + multilingual-e5 + Faiss/NumPy、port 7890） | 「ワークスペース検索して」「RAGで探して」 |
+ワークスペース検索は、xangiの公式Extensionカタログから追加できる [xangi-search](https://github.com/karaage0703/xangi-search) を推奨します。検索エンジンと対応スキルはxangi-search側で管理するため、このリポジトリには同梱していません。未導入時は通常のファイル読み取りや文字列検索を使います。
 
 ### 思考・分析・レビュー
 
@@ -90,7 +86,7 @@ description: 何をするスキルか。「呼び出しフレーズ」で使用�
 
 このテンプレートのスキルは、外部CLI・常駐サーバー・API・GPUがすべて揃っている前提ではありません。
 
-- `xs-workspace-rag`: 任意スキル。利用者がセットアップして明示的に使う場合だけ起動・検索する
+- `xangi-search`: 任意の外部Extension。導入済みなら対応スキルを使い、未導入なら通常のファイル検索へ切り替える
 - `xs-multi-agent`: `check_agents.sh` が実疎通を確認したagentだけ使い、外部agentが0件なら現在のAIだけで続行する
 - `xs-code-reviewer`: マルチエージェントは任意。PR取得に必要なGitHub CLIが使えない場合は、ユーザーが提示した差分やローカル差分だけをレビューする
 - Google Workspace、Notion、カレンダーなどの外部連携: 認証済みの機能だけ使い、未設定なら外部操作をスキップして必要な設定を案内する

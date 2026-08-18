@@ -45,7 +45,7 @@ LLM をエージェントとして使った Root Cause Analysis（RCA）の研�
 ## 必要な依存
 
 - 標準的な Unix ツール: `bash` / `grep` / `git`
-- チャットプラットフォーム経由の場合: xangi（`xangi-cmd discord_history` 等）
+- チャットプラットフォーム経由の場合: xangi（`xangi tool discord_history` 等）
 - ノート保存に `xs-note-taking` スキルを利用
 
 ## トラブルシューティング
