@@ -16,7 +16,7 @@ description: 異なるproviderのAI（Codex/Claude/Grok/Cursor/Antigravity等）
 bash [SKILL_DIR]/scripts/check_agents.sh
 ```
 
-このコマンドは、各エージェントに軽いプロンプトを投げ、`skills/xs-multi-agent/SKILL.md` を読めるかまで確認する。成功判定には固定トークン `CHECK_AGENTS_OK` を使い、解釈差のある自然言語回答を判定に使わない。各サービスのクォータを少量使う。
+このコマンドは一時workspaceにランダムトークンのファイルを作り、各エージェントが読み取って返した値の完全一致を確認する。答えは依頼文に含めない。各サービスのクォータを少量使う。
 
 軽量にコマンド存在とバージョンだけ見たい時:
 
@@ -87,12 +87,12 @@ cat > /tmp/multi-agent-prompt.txt <<'EOF'
 EOF
 ```
 
-短時間の依頼は補助スクリプトで実行する。
+短時間の依頼は補助スクリプトで実行する。`TARGET_WORKSPACE`には必要資料だけを置いたディレクトリの絶対パスを設定する。
 
 ```bash
-bash skills/xs-multi-agent/scripts/run_agent.sh codex /tmp/multi-agent-prompt.txt "$PWD"
-bash skills/xs-multi-agent/scripts/run_agent.sh grok /tmp/multi-agent-prompt.txt "$PWD"
-bash skills/xs-multi-agent/scripts/run_agent.sh cursor /tmp/multi-agent-prompt.txt "$PWD"
+bash skills/xs-multi-agent/scripts/run_agent.sh codex /tmp/multi-agent-prompt.txt "$TARGET_WORKSPACE"
+bash skills/xs-multi-agent/scripts/run_agent.sh grok /tmp/multi-agent-prompt.txt "$TARGET_WORKSPACE"
+bash skills/xs-multi-agent/scripts/run_agent.sh cursor /tmp/multi-agent-prompt.txt "$TARGET_WORKSPACE"
 ```
 
 対象workspaceは必須。調整役のworkspaceを既定で丸ごと渡さない。`run_agent.sh` は空回答、途中終了、permission blocker、filesystem watch失敗を非0終了にする。一定量の根拠が必要なら `MULTI_AGENT_MIN_OUTPUT_BYTES=500` のように最小出力量を指定する。
@@ -199,6 +199,7 @@ AIアシスタントのセッションは turn-based。外部AIプロセスを�
 
 ```bash
 AGENT_STATE_DIR="$(mktemp -d)"
+# TARGET_WORKSPACEは必要資料だけを含む絶対パスへ設定済みとする
 setsid bash -lc '
   state_dir="$1"
   agent="$2"
@@ -210,7 +211,7 @@ setsid bash -lc '
   echo "$rc" > "$state_dir/exit"
   # xangiでは終了状態保存後に xangi tool trigger を呼ぶ
   exit "$rc"
-' bash "$AGENT_STATE_DIR" codex /tmp/multi-agent-prompt.txt "$PWD" >/dev/null 2>&1 &
+' bash "$AGENT_STATE_DIR" codex /tmp/multi-agent-prompt.txt "$TARGET_WORKSPACE" >/dev/null 2>&1 &
 
 sleep 2
 ps -o pid,ppid,sid,pgid,stat,etime,cmd -p "$(cat "$AGENT_STATE_DIR/pid")"
@@ -225,3 +226,7 @@ echo "State: $AGENT_STATE_DIR"
 - 結果が来ないまま「統合結果」を報告する
 - 存在しない `process poll` / `process log` コマンドを書く
 - `self` を外部エージェントとして保存し、次回以降の依頼先にする
+
+## Grokの実行環境
+
+Grokは一時的な `GROK_HOME` を使い、既存の認証ファイル（`GROK_AUTH_PATH`、未指定なら元の `GROK_HOME/auth.json` または `$HOME/.grok/auth.json`）だけを参照する。対象workspaceのスキル監視とClaude/Cursor互換設定の自動読込を抑え、終了時に一時設定を削除する。これはファイルアクセス自体を隔離するsandboxではないため、渡す資料の範囲は引き続き最小限にする。

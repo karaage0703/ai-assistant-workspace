@@ -8,7 +8,7 @@ description: |
 
 # 毎日の日記記録スキル
 
-1日を日記形式で記録する。notes/ + Notion の両方に残す。
+1日を日記形式で `notes/` に記録する。Notion保存とGit同期は任意。
 
 ## 絶対遵守事項
 
@@ -42,34 +42,21 @@ description: |
 
 ### Step 3: Notion日記ページ作成（任意）
 
-Notion連携が設定されている場合、`notion-manager` スキルの `notion_tool.py` を使って日記ページを作成。
+Notion連携が設定済みで、ユーザーがその保存先への送信を許可している場合だけ、`skills/xs-notion-manager/SKILL.md` を読み、現行のコマンドで保存する。未設定でもローカル日記は完了できる。
 
-```bash
-cd skills/notion-manager
+### Step 4: 保存確認と任意の同期
 
-# ページ作成
-uv run python notion_tool.py diary <DB_ID> -t "YYYYMMDD_タイトル" -d YYYY-MM-DD
+`notes/YYYYMMDD_diary.md` を読み戻し、日付・内容・保存先を確認する。日次記録へ保存先を追記した場合は、その追記も確認する。
 
-# 見出し・本文を追加
-uv run python notion_tool.py append <page_id> -H "今日の出来事"
-uv run python notion_tool.py append <page_id> -b "内容..."
-
-# 画像アップロード（キャプション付き）
-uv run python notion_tool.py upload /path/to/photo.jpg <page_id> -c "キャプション"
-```
-
-### Step 4: 同期
-
-```bash
-git add notes/ memory/ && git commit -m "日記 YYYYMMDD" && git push
-```
+Git同期は `skills/xs-note-taking/SKILL.md` の任意同期手順に従う。既定のGit対象外設定を変更したり、個人記録を強制追加したりしない。Notionの保存結果はローカル保存と区別して報告する。
 
 ### Step 5: 完了報告
 
 ```
 MM/DDの日記完了！
 
-Notion日記: https://www.notion.so/xxx（Notion連携時）
+保存先: notes/YYYYMMDD_diary.md
+Notion日記: https://www.notion.so/xxx（保存成功時のみ）
 
 やったこと：
 - ...
@@ -121,7 +108,7 @@ tags: [diary]
 □ `date` コマンドで曜日を確認した
 □ 日常セクションに食事・家族・ペット・散歩・仕事を記録した
 □ 日常セクションが開発より上にある
-□ memory/ にファイル操作で書き込んだ
+□ notes/の日記を読み戻した（memory/へ追記した場合は追記も確認した）
 □ 投稿文は日本語のみ、作業ログ混入なし
 □ 推定値と実測値を混同していない
 ```

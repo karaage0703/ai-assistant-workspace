@@ -94,7 +94,9 @@ cat > /tmp/pr-review-prompt.txt <<'EOF'
 <PR情報と差分>
 EOF
 
-bash skills/xs-multi-agent/scripts/run_agent.sh codex /tmp/pr-review-prompt.txt "$PWD"
+# 必要なPR差分と関連資料だけを置いたディレクトリを指定する
+TARGET_WORKSPACE="/path/to/review-materials"
+bash skills/xs-multi-agent/scripts/run_agent.sh codex /tmp/pr-review-prompt.txt "$TARGET_WORKSPACE"
 ```
 
 外部AIが使えない場合は、自分だけでレビューしてよい。その場合は「外部AIは検出したが使用できなかった」と報告する。
