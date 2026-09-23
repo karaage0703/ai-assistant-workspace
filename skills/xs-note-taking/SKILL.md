@@ -111,7 +111,8 @@ date +%Y%m%d
 ### Step 3: 保存後の確認
 
 ```bash
-git diff -- notes/YYYYMMDD_タイトル.md
+test -s notes/YYYYMMDD_タイトル.md
+cat notes/YYYYMMDD_タイトル.md
 ```
 
 確認すること:
@@ -120,13 +121,11 @@ git diff -- notes/YYYYMMDD_タイトル.md
 - private な値が混ざっていないか
 - MarkdownリンクがGitHubでも読める形式か
 
-### Step 4: 同期（Git管理の場合）
+### Step 4: 必要な場合だけ同期
 
-```bash
-git add notes/ && git commit -m "メモ追加: タイトル" && git push
-```
+ローカルファイルを保存して読み戻せた時点で記録は完了する。このテンプレートの `notes/*.md` は既定でGit対象外なので、commit/pushは必須にしない。空のgit diffは保存確認の代わりにならない。
 
-公開リポジトリや共有リポジトリへ push する場合は、実行前に対象操作をユーザーへ確認する。
+同期が設定・依頼されている場合だけ、保存先・公開範囲・許可を確認し、対象ファイルを個別指定して同期する。Git対象外の個人記録を強制追加しない。保存と同期の成否は別々に報告する。
 
 ## リンク形式
 

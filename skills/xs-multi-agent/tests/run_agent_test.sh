@@ -43,6 +43,10 @@ EOF
 cat > "$FAKE_BIN/grok" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "${FAKE_GROK_ARGS_FILE:?}"
+printf '%s\n' "$GROK_HOME" > "$FAKE_GROK_ARGS_FILE.home"
+printf '%s\n' "$GROK_AUTH_PATH" > "$FAKE_GROK_ARGS_FILE.auth"
+cp "$GROK_HOME/config.toml" "$FAKE_GROK_ARGS_FILE.config"
+
 case "${FAKE_GROK_MODE:-failure}" in
   failure)
     printf 'ERROR failed to watch root: Error { kind: MaxFilesWatch }\n'
@@ -214,4 +218,26 @@ if (
 fi
 grep -q 'expected at least 500' "$TEST_TMP/short.err"
 
+# Isolation must preserve user config/auth and clean temporary homes on failure too.
+original_home="$TEST_TMP/original-grok"
+mkdir -p "$original_home"
+printf 'original config\n' > "$original_home/config.toml"
+printf 'test credential\n' > "$original_home/auth.json"
+GROK_HOME="$original_home" GROK_AUTH_PATH="$original_home/auth.json" FAKE_GROK_MODE=success \
+  run_agent grok "$PROMPT_FILE" "$TEST_TMP" >/dev/null
+[[ "$(cat "$TEST_TMP/grok.args.home")" != "$original_home" ]]
+[[ ! -e "$(cat "$TEST_TMP/grok.args.home")" ]]
+[[ "$(cat "$TEST_TMP/grok.args.auth")" == "$original_home/auth.json" ]]
+[[ "$(cat "$original_home/config.toml")" == 'original config' ]]
+[[ "$(cat "$original_home/auth.json")" == 'test credential' ]]
+grep -Fq '[compat.claude]' "$TEST_TMP/grok.args.config"
+grep -Fq '[compat.cursor]' "$TEST_TMP/grok.args.config"
+grep -Fq "$TEST_TMP/.agents/skills" "$TEST_TMP/grok.args.config"
+if GROK_HOME="$original_home" GROK_AUTH_PATH='' FAKE_GROK_MODE=failure \
+  run_agent grok "$PROMPT_FILE" "$TEST_TMP" >/dev/null 2>&1; then
+  echo 'FAIL: invalid Grok result accepted' >&2
+  exit 1
+fi
+[[ ! -e "$(cat "$TEST_TMP/grok.args.home")" ]]
+[[ "$(cat "$TEST_TMP/grok.args.auth")" == "$original_home/auth.json" ]]
 echo "run_agent tests: PASS"

@@ -180,7 +180,9 @@ wc -l [WORKSPACE]/skills/<skill-name>/SKILL.md
 
 ### Step 2: チェックリスト適用
 
-`[SKILL_DIR]/references/checklist.md` で問題点を洗い出し。
+`[SKILL_DIR]/references/checklist.md` の全項目を `OK` / `要修正` / `対象外（理由）` で判定する。最初に見つけた問題だけで監査を終えない。
+
+対象ディレクトリ全体を確認し、README・参照ファイル・スクリプトが実在し、説明と実装が一致するかを照合する。README省略はStep 6の条件と理由を記録する。
 
 ### Step 3: パターン参照
 
@@ -191,6 +193,8 @@ wc -l [WORKSPACE]/skills/<skill-name>/SKILL.md
 問題点を修正し、品質チェックを再実行。
 
 ### Step 5: Git同期と報告
+
+全項目の判定、変更した成果物、検証結果、残課題を報告する。未対応の「要修正」がある場合は対象と理由を明示し、改善完了とは報告しない。同期はユーザーの許可と対象リポジトリの運用ルールに従う。
 
 ---
 

@@ -2,7 +2,11 @@
 set -euo pipefail
 
 TEMP_PATHS=()
+TEMP_DIRS=()
 cleanup_temp_paths() {
+  if ((${#TEMP_DIRS[@]})); then
+    rm -rf -- "${TEMP_DIRS[@]}"
+  fi
   if ((${#TEMP_PATHS[@]})); then
     rm -f -- "${TEMP_PATHS[@]}"
   fi
@@ -202,6 +206,53 @@ run_codex() {
   rm -f "$result_file" "$diagnostic_file"
 }
 
+toml_basic_string() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\t'/\\t}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  printf '"%s"' "$value"
+}
+
+run_grok() {
+  local state_home="${GROK_HOME:-$HOME/.grok}"
+  local auth_path="${GROK_AUTH_PATH:-$state_home/auth.json}"
+  local isolated_home
+  isolated_home="$(mktemp -d "${TMPDIR:-/tmp}/multi-agent-grok-home.XXXXXX")"
+  TEMP_DIRS+=("$isolated_home")
+  local config_file="$isolated_home/config.toml"
+
+  {
+    printf '[skills]\nignore = [%s, %s, %s, %s]\n\n' \
+      "$(toml_basic_string "$workspace/.grok/skills")" \
+      "$(toml_basic_string "$workspace/.agents/skills")" \
+      "$(toml_basic_string "$workspace/.claude/skills")" \
+      "$(toml_basic_string "$workspace/.cursor/skills")"
+    printf '[compat.cursor]\nskills = false\nrules = false\nagents = false\nmcps = false\nhooks = false\n\n'
+    printf '[compat.claude]\nskills = false\nrules = false\nagents = false\nmcps = false\nhooks = false\n'
+  } > "$config_file"
+
+  local rc=0
+  if GROK_HOME="$isolated_home" GROK_AUTH_PATH="$auth_path" \
+    run_and_validate grok grok \
+      -p "$prompt" \
+      --cwd "$workspace" \
+      --permission-mode plan \
+      --output-format plain \
+      --no-memory \
+      --no-subagents \
+      --tools "Read,Glob,Grep,WebFetch,WebSearch"; then
+    :
+  else
+    rc=$?
+  fi
+
+  rm -rf -- "$isolated_home"
+  return "$rc"
+}
+
 run_antigravity_print() {
   local cmd="$1"
   local log_file
@@ -318,14 +369,7 @@ case "$agent" in
     ;;
   grok)
     command -v grok >/dev/null
-    run_and_validate grok grok \
-      -p "$prompt" \
-      --cwd "$workspace" \
-      --permission-mode plan \
-      --output-format plain \
-      --no-memory \
-      --no-subagents \
-      --tools "Read,Glob,Grep,WebFetch,WebSearch"
+    run_grok
     ;;
   cursor)
     command -v cursor-agent >/dev/null

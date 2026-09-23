@@ -66,3 +66,7 @@ bash skills/xs-multi-agent/scripts/validate_panel.sh \
 
 検証を通らない場合は単独または限定的な分析として扱い、「複数AIの合意」とは表現しません。
 Cursorなどproviderが`unknown`のagentは調査には使えますが、異なるproviderを保証するpanel票には数えません。
+
+## Grokの設定分離
+
+Grok実行時は一時的なGROK_HOMEを使い、元の認証ファイルだけを参照します。個人設定や互換設定、対象workspace内の不要なスキル監視を抑えます。終了時に一時設定を削除し、元の設定は変更しません。ファイルアクセスのsandboxではないので、必要な資料だけを含むworkspaceを渡してください。
