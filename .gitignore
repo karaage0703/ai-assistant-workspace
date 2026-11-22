@@ -1,8 +1,9 @@
 # 個人データ（セットアップ後に生成される）
-memory/*.md
-!memory/.gitkeep
-notes/*.md
-!notes/.gitkeep
+/MEMORY.md
+/memory/*
+!/memory/.gitkeep
+/notes/*
+!/notes/.gitkeep
 
 # OS
 .DS_Store
